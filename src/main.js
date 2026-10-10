@@ -53,7 +53,8 @@ window.addEventListener("hampter-gameover", () => {
 const gameCanvas = document.querySelector("#gameCanvas");
 const game = new Game(gameCanvas);
 
-game.start();
+// Wait for the level images to load before starting the game loop
+game.loadAssets().then(() => game.start());
 
 window.addEventListener("keydown", (event) => {
   if (event.code === "Space") {
