@@ -41,8 +41,7 @@ export class ObstacleManager {
     }
 
     for (const obstacle of this.obstacles) {
-        console.log(obstacle.x, dt);
-        obstacle.update(dt);
+      obstacle.update(dt);
 
       // Lose one life per obstacle hit
       if (!obstacle.hasHit && isColliding(player, obstacle)) {
@@ -59,11 +58,6 @@ export class ObstacleManager {
     for (const obstacle of this.obstacles) {
       obstacle.draw(ctx);
     }
-
-    // Simple lives counter (swap for heart sprites later)
-    ctx.fillStyle = "#000000";
-    ctx.font = "20px sans-serif";
-    ctx.fillText(`Lives: ${this.lives}`, 20, 30);
   }
 
   reset() {
