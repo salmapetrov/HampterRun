@@ -26,12 +26,22 @@ const TRANSFORM_TIME = 1.2;
 const BUTTON_DIR = "/assets/menu/Buttons";
 const TITLE_IMAGE = "/assets/backgrounds/title.png";
 const GAME_OVER_IMAGE = "/assets/backgrounds/gameOver.png";
+const INSTRUCTIONS_IMAGE = "/assets/backgrounds/instructions.png";
+const MENU_BACKGROUND_IMAGE = "/assets/backgrounds/background4.png";
+
+// Home icon (bottom right on the instructions and gameplay screens)
+const ICON_DIR = "/assets/menu/Icons";
+const HOME_STATIC = `${ICON_DIR}/Static/Blue/Blue (28).png`;
+const HOME_ANIM_DIR = `${ICON_DIR}/Animated/Blue/Blue (28)`;
+const HOME_ANIM_PREFIX = "Blue (28)"; // frames are named <prefix>0.png, <prefix>1.png, ...
+const HOME_ICON_WIDTH = 70;
+const HOME_ICON_MARGIN = 20;
 const MAX_FRAMES = 60;
 const ANIM_FPS = 12;
 
 // A canvas button with a static image and an optional click animation
 class MenuButton {
-  constructor({ label, staticFile, animDir, prefix, centerX, y, width }) {
+  constructor({ label, staticFile, animDir, prefix, centerX, y, width, bottom }) {
     this.label = label; // fallback text if the image is missing
     this.staticFile = staticFile;
     this.animDir = animDir;
@@ -41,6 +51,7 @@ class MenuButton {
     this.height = 80; // replaced once the image loads
     this.x = centerX - width / 2;
     this.y = y;
+    this.bottom = bottom; // optional: keeps the bottom edge here once the height is known
 
     this.image = null;
     this.frames = [];
@@ -54,6 +65,10 @@ class MenuButton {
     if (this.image) {
       this.height =
         this.width * (this.image.naturalHeight / this.image.naturalWidth);
+
+      if (this.bottom !== undefined) {
+        this.y = this.bottom - this.height;
+      }
     } else {
       console.warn("Button image not found:", this.staticFile);
     }
@@ -138,7 +153,7 @@ function loadImage(src) {
 }
 
 // Game states:
-//   "menu" -> "playing" -> "gameover" or "win" -> "playing" (Play) or "menu" (Menu)
+//   "menu" -> "instructions" -> "playing" -> "gameover" or "win" -> "playing" (Play) or "menu" (Menu)
 //   "dying" = death animation playing before "gameover"
 //   "win" = reached the end of the last background copy
 //   "pressing" = a button's click animation is playing, then its action runs
@@ -159,7 +174,7 @@ export class Game {
     // Buttons
     this.startButton = blueButton("Start", {
       centerX: GAME_WIDTH / 2,
-      y: GAME_HEIGHT / 2,
+      y: GAME_HEIGHT / 2 + 60,
       width: 260,
     });
     this.playButton = blueButton("Play", {
@@ -171,6 +186,16 @@ export class Game {
       centerX: GAME_WIDTH / 2 + 120,
       y: GAME_HEIGHT / 2 + 20,
       width: 200,
+    });
+    this.homeButton = new MenuButton({
+      label: "HOME",
+      staticFile: HOME_STATIC,
+      animDir: HOME_ANIM_DIR,
+      prefix: HOME_ANIM_PREFIX,
+      centerX: GAME_WIDTH - HOME_ICON_MARGIN - HOME_ICON_WIDTH / 2,
+      y: GAME_HEIGHT - HOME_ICON_MARGIN - HOME_ICON_WIDTH,
+      bottom: GAME_HEIGHT - HOME_ICON_MARGIN,
+      width: HOME_ICON_WIDTH,
     });
 
     // Button press animation
@@ -187,6 +212,22 @@ export class Game {
     loadImage(GAME_OVER_IMAGE).then((img) => {
       this.gameOverImage = img;
       if (!img) console.warn("Game over image not found:", GAME_OVER_IMAGE);
+    });
+
+    this.instructionsImage = null;
+    this.instructionsShownAt = 0;
+    loadImage(INSTRUCTIONS_IMAGE).then((img) => {
+      console.log("instructions image:", img);
+      this.instructionsImage = img;
+      if (!img) {
+        console.warn("Instructions image not found:", INSTRUCTIONS_IMAGE);
+      }
+    });
+
+    this.menuBackgroundImage = null;
+    loadImage(MENU_BACKGROUND_IMAGE).then((img) => {
+      this.menuBackgroundImage = img;
+      if (!img) console.warn("Menu background not found:", MENU_BACKGROUND_IMAGE);
     });
 
     this.running = false;
@@ -273,8 +314,18 @@ export class Game {
       const x = (event.clientX - rect.left) * (this.canvas.width / rect.width);
       const y = (event.clientY - rect.top) * (this.canvas.height / rect.height);
 
-      if (this.state === "menu" && this.startButton.contains(x, y)) {
+      // The home icon shows on the instructions and gameplay screens
+      // (not during the boss battle, which has its own UI)
+      const homeVisible =
+        (this.state === "instructions" || this.state === "playing") &&
+        this.scene !== "battle";
+
+      if (homeVisible && this.homeButton.contains(x, y)) {
+        this.press(this.homeButton, () => this.goToMenu());
+      } else if (this.state === "menu" && this.startButton.contains(x, y)) {
         this.beginStart();
+      } else if (this.state === "instructions") {
+        this.leaveInstructions();
       } else if (this.state === "playing" && this.scene === "battle") {
         this.battle.handleClick(x, y);
       } else if (this.isEndScreen()) {
@@ -359,7 +410,20 @@ export class Game {
   beginStart() {
     if (this.state !== "menu") return;
 
-    this.press(this.startButton, () => this.startGame());
+    this.press(this.startButton, () => this.showInstructions());
+  }
+
+  showInstructions() {
+    this.state = "instructions";
+    this.instructionsShownAt = performance.now();
+  }
+
+  // Continue to the game (ignores input for a moment so a held key can't skip the screen)
+  leaveInstructions() {
+    if (this.state !== "instructions") return;
+    if (performance.now() - this.instructionsShownAt < 400) return;
+
+    this.startGame();
   }
 
   // Game over and win screens both show the Play / Menu buttons
@@ -367,10 +431,12 @@ export class Game {
     return this.state === "gameover" || this.state === "win";
   }
 
-  // Enter / Space: Start on the menu, Play on the game over / win screen
+  // Enter / Space: Start on the menu, continue on instructions, Play on the game over / win screen
   pressMainButton() {
     if (this.state === "menu") {
       this.beginStart();
+    } else if (this.state === "instructions") {
+      this.leaveInstructions();
     } else if (this.isEndScreen()) {
       this.press(this.playButton, () => this.startGame());
     }
@@ -395,7 +461,11 @@ export class Game {
 
   // Space / webcam jump: starts or restarts the game, otherwise jumps
   jump() {
-    if (this.state === "menu" || this.isEndScreen()) {
+    if (
+      this.state === "menu" ||
+      this.state === "instructions" ||
+      this.isEndScreen()
+    ) {
       this.pressMainButton();
       return;
     }
@@ -658,15 +728,32 @@ export class Game {
 
     b.draw(ctx, this.animTimeFor(b));
 
-    // Hint
-    ctx.fillStyle = "#000000";
-    ctx.font = "20px sans-serif";
+    ctx.textAlign = "left";
+  }
+
+  drawInstructions() {
+    const ctx = this.ctx;
+
+    if (this.instructionsImage) {
+      // Instructions screen (900x500, drawn over the whole canvas)
+      ctx.drawImage(this.instructionsImage, 0, 0, GAME_WIDTH, GAME_HEIGHT);
+      return;
+    }
+
+    // Fallback text if the image hasn't loaded
     ctx.textAlign = "center";
-    ctx.fillText(
-      "Click START or press SPACE / ENTER",
-      GAME_WIDTH / 2,
-      b.y + b.height + 40
-    );
+    ctx.fillStyle = "#000000";
+
+    ctx.font = "bold 48px sans-serif";
+    ctx.fillText("HOW TO PLAY", GAME_WIDTH / 2, 120);
+
+    ctx.font = "26px sans-serif";
+    ctx.fillText("Run in place to make the hamster run", GAME_WIDTH / 2, 200);
+    ctx.fillText("Jump to hop over the blocks", GAME_WIDTH / 2, 245);
+    ctx.fillText("You have 3 lives. Each block you hit costs one.", GAME_WIDTH / 2, 290);
+
+    ctx.font = "22px sans-serif";
+    ctx.fillText("Press SPACE or click to begin", GAME_WIDTH / 2, 380);
 
     ctx.textAlign = "left";
   }
@@ -719,19 +806,25 @@ export class Game {
     ctx.textAlign = "left";
   }
 
-  // Sky and grass behind the title screen (title.png is see-through)
+  // Forest behind the title and instructions screens (those images are see-through)
   drawMenuBackground() {
     const ctx = this.ctx;
 
-    // Sky
+    if (this.menuBackgroundImage) {
+      // Scale to the canvas height and show the left part, like the start of the level
+      const img = this.menuBackgroundImage;
+      const scale = GAME_HEIGHT / img.naturalHeight;
+      ctx.drawImage(this.menuBackgroundImage, 0, 0, GAME_WIDTH, GAME_HEIGHT);
+      return;
+    }
+
+    // Fallback sky and grass if the image is missing
     ctx.fillStyle = "#BFE8FF";
     ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
 
-    // Ground
     ctx.fillStyle = "#9BCB77";
     ctx.fillRect(0, GROUND_Y, GAME_WIDTH, GAME_HEIGHT - GROUND_Y);
 
-    // Ground outline
     ctx.fillStyle = "#5D9445";
     ctx.fillRect(0, GROUND_Y, GAME_WIDTH, 5);
   }
@@ -747,6 +840,13 @@ export class Game {
     if (screen === "menu") {
       this.drawMenuBackground();
       this.drawMenu();
+      return;
+    }
+
+    if (screen === "instructions") {
+      this.drawMenuBackground();
+      this.drawInstructions();
+      this.homeButton.draw(ctx, this.animTimeFor(this.homeButton));
       return;
     }
 
@@ -772,6 +872,10 @@ export class Game {
     if (this.scene === "transform") this.drawTransform();
 
     this.livesDisplay.draw(ctx, this.obstacles.lives);
+
+    if (screen === "playing") {
+      this.homeButton.draw(ctx, this.animTimeFor(this.homeButton));
+    }
 
     if (this.showGroundDebug) {
       ctx.fillStyle = "#000000";
