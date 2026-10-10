@@ -23,17 +23,23 @@ export class Player {
       idle: new Image(),
       run: new Image(),
       jump: new Image(),
+      hit: new Image(),
+      death: new Image(),
     };
 
     this.sprites.idle.src = "/assets/hamster/hamster-idle.png";
     this.sprites.run.src = "/assets/hamster/hamster-run.png";
     this.sprites.jump.src = "/assets/hamster/hamster-jump.png";
+    this.sprites.hit.src = "/assets/hamster/hamster-hit.png";
+    this.sprites.death.src = "/assets/hamster/hamster-death.png";
 
     // Animation configuration
     this.animations = {
       idle: { frames: 7, columns: 7, fps: 7 },
       run: { frames: 7, columns: 7, fps: 12 },
       jump: { frames: 6, columns: 3, fps: 10 },
+      hit: { frames: 3, columns: 3, fps: 10 },
+      death: { frames: 11, columns: 11, fps: 12 },
     };
 
     this.frameWidth = 48;
@@ -42,14 +48,30 @@ export class Player {
     this.animation = "idle";
     this.frame = 0;
     this.animationTimer = 0;
+    this.actionAnimation = null;
+    this.actionAnimationFinished = false;
 
     // Sprite appearance (independent of collision box)
     this.drawWidth = 120;
     this.drawHeight = 120;
   }
 
+  playHit() {
+    if (this.actionAnimation === "death") return;
+
+    this.actionAnimation = "hit";
+    this.actionAnimationFinished = false;
+    this.setAnimation("hit");
+    }
+
+    playDeath() {
+    this.actionAnimation = "death";
+    this.actionAnimationFinished = false;
+    this.setAnimation("death");
+    }
+
   jump() {
-    if (!this.isGrounded) return;
+    if (!this.isGrounded || this.actionAnimation) return;
 
     this.velocityY = JUMP_VELOCITY;
     this.isGrounded = false;
@@ -80,35 +102,55 @@ export class Player {
   }
 
   updateAnimation(dt, isRunning) {
-    // Jump animation takes priority
-    if (!this.isGrounded) {
-      this.setAnimation("jump");
+    // Action animations override normal movement animations
+    if (this.actionAnimation) {
+        this.setAnimation(this.actionAnimation);
+    } else if (!this.isGrounded) {
+        this.setAnimation("jump");
     } else if (isRunning) {
-      this.setAnimation("run");
+        this.setAnimation("run");
     } else {
-      this.setAnimation("idle");
+        this.setAnimation("idle");
     }
 
     const config = this.animations[this.animation];
+
+    // Freeze on the last frame of the death animation
+    if (
+        this.actionAnimation === "death" &&
+        this.actionAnimationFinished
+    ) {
+        return;
+    }
 
     this.animationTimer += dt;
     const frameDuration = 1 / config.fps;
 
     while (this.animationTimer >= frameDuration) {
-      this.animationTimer -= frameDuration;
+        this.animationTimer -= frameDuration;
 
-      if (this.animation === "jump") {
-        // Play jump animation once
+        if (this.actionAnimation) {
+        if (this.frame < config.frames - 1) {
+            this.frame++;
+        } else {
+            this.actionAnimationFinished = true;
+
+            if (this.actionAnimation === "hit") {
+            this.actionAnimation = null;
+            }
+
+            break;
+        }
+        } else if (this.animation === "jump") {
         this.frame = Math.min(
-          this.frame + 1,
-          config.frames - 1
+            this.frame + 1,
+            config.frames - 1
         );
-      } else {
-        // Loop running/idle animations
+        } else {
         this.frame = (this.frame + 1) % config.frames;
-      }
+        }
     }
-  }
+    }
 
   draw(ctx) {
     const sprite = this.sprites[this.animation];
@@ -160,5 +202,7 @@ export class Player {
     this.setAnimation("idle");
     this.frame = 0;
     this.animationTimer = 0;
+    this.actionAnimation = null;
+    this.actionAnimationFinished = false;
   }
 }

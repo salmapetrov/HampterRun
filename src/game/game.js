@@ -1,3 +1,4 @@
+
 import {
   GAME_WIDTH,
   GAME_HEIGHT,
@@ -18,13 +19,13 @@ const ANIM_FPS = 12;
 // A canvas button with a static image and an optional click animation
 class MenuButton {
   constructor({ label, staticFile, animDir, prefix, centerX, y, width }) {
-    this.label = label; // fallback text if the image is missing
+    this.label = label;
     this.staticFile = staticFile;
     this.animDir = animDir;
-    this.prefix = prefix; // frames are named <prefix>0.png, <prefix>1.png, ...
+    this.prefix = prefix;
 
     this.width = width;
-    this.height = 80; // replaced once the image loads
+    this.height = 80;
     this.x = centerX - width / 2;
     this.y = y;
 
@@ -46,8 +47,12 @@ class MenuButton {
 
     // Load animation frames until one is missing
     for (let i = 0; i < MAX_FRAMES; i++) {
-      const frame = await loadImage(`${this.animDir}/${this.prefix}${i}.png`);
+      const frame = await loadImage(
+        `${this.animDir}/${this.prefix}${i}.png`
+      );
+
       if (!frame) break;
+
       this.frames.push(frame);
     }
 
@@ -59,7 +64,7 @@ class MenuButton {
     }
   }
 
-  // How long the click animation lasts, in seconds
+  // Duration of button click animation in seconds
   get duration() {
     return this.frames.length / ANIM_FPS;
   }
@@ -73,7 +78,8 @@ class MenuButton {
     );
   }
 
-  // animTime = null draws the static image, a number plays the animation
+  // animTime = null draws static image
+  // A number plays the button animation
   draw(ctx, animTime = null) {
     let image = this.image;
 
@@ -82,28 +88,37 @@ class MenuButton {
         Math.floor(animTime * ANIM_FPS),
         this.frames.length - 1
       );
+
       image = this.frames[index];
     }
 
     if (image) {
-      ctx.imageSmoothingEnabled = false; // keeps pixel art crisp
+      ctx.imageSmoothingEnabled = false;
       ctx.drawImage(image, this.x, this.y, this.width, this.height);
       return;
     }
 
-    // Fallback placeholder if the image hasn't loaded
+    // Fallback placeholder
     ctx.fillStyle = "#D9A066";
     ctx.fillRect(this.x, this.y, this.width, this.height);
+
     ctx.fillStyle = "#000000";
     ctx.font = "bold 32px sans-serif";
     ctx.textAlign = "center";
-    ctx.fillText(this.label, this.x + this.width / 2, this.y + this.height / 2 + 11);
+
+    ctx.fillText(
+      this.label,
+      this.x + this.width / 2,
+      this.y + this.height / 2 + 11
+    );
+
     ctx.textAlign = "left";
   }
 }
 
-// Blue buttons: static image + animation frames (Name0.png, Name1.png, ...)
-const STATIC_SUFFIX = "B"; // static files are named like StartB.png
+// Blue button assets
+const STATIC_SUFFIX = "B";
+
 function blueButton(name, options) {
   return new MenuButton({
     label: name.toUpperCase(),
@@ -117,15 +132,17 @@ function blueButton(name, options) {
 function loadImage(src) {
   return new Promise((resolve) => {
     const img = new Image();
+
     img.onload = () => resolve(img);
     img.onerror = () => resolve(null);
+
     img.src = encodeURI(src);
   });
 }
 
 // Game states:
-//   "menu" -> "playing" -> "gameover" -> "playing" (Play) or "menu" (Menu)
-//   "pressing" = a button's click animation is playing, then its action runs
+// menu -> pressing -> playing -> gameover
+// pressing = button animation before its action runs
 export class Game {
   constructor(canvas) {
     this.canvas = canvas;
@@ -140,17 +157,19 @@ export class Game {
 
     this.state = "menu";
 
-    // Buttons
+    // Menu buttons
     this.startButton = blueButton("Start", {
       centerX: GAME_WIDTH / 2,
       y: GAME_HEIGHT / 2,
       width: 260,
     });
+
     this.playButton = blueButton("Play", {
       centerX: GAME_WIDTH / 2 - 120,
       y: GAME_HEIGHT / 2 + 20,
       width: 200,
     });
+
     this.menuButton = blueButton("Menu", {
       centerX: GAME_WIDTH / 2 + 120,
       y: GAME_HEIGHT / 2 + 20,
@@ -158,63 +177,96 @@ export class Game {
     });
 
     // Button press animation
-    this.pending = null; // { button, action, from }
+    this.pending = null;
     this.pressTime = 0;
 
+    // Background images
     this.titleImage = null;
+
     loadImage(TITLE_IMAGE).then((img) => {
       this.titleImage = img;
-      if (!img) console.warn("Title image not found:", TITLE_IMAGE);
+
+      if (!img) {
+        console.warn("Title image not found:", TITLE_IMAGE);
+      }
     });
 
     this.gameOverImage = null;
+
     loadImage(GAME_OVER_IMAGE).then((img) => {
       this.gameOverImage = img;
-      if (!img) console.warn("Game over image not found:", GAME_OVER_IMAGE);
+
+      if (!img) {
+        console.warn("Game over image not found:", GAME_OVER_IMAGE);
+      }
     });
 
+    // Main game loop
     this.running = false;
     this.lastTime = 0;
-
     this.loop = this.loop.bind(this);
 
-    // Running state (set by the webcam gesture detection in main.js)
+    // Running state
     this.isRunning = false;
-    this.keyboardRunning = false; // testing without a webcam: hold Shift
-    this.runSpeed = 0; // 0 = standing still, 1 = full speed
+    this.keyboardRunning = false;
+
+    // Forward movement
+    this.runSpeed = 0;
+    this.jumpMomentum = 0;
     this.groundOffset = 0;
 
+    // Webcam running detection
     window.addEventListener("hampter-running", (event) => {
       this.isRunning = event.detail.running;
     });
 
+    // Webcam jump detection
     window.addEventListener("hampter-action", (event) => {
-      if (event.detail.action === "JUMP") this.jump();
+      if (event.detail.action === "JUMP") {
+        this.jump();
+      }
     });
 
+    // Keyboard controls
     window.addEventListener("keydown", (event) => {
-      if (event.code === "ShiftLeft" || event.code === "ShiftRight") {
+      if (
+        event.code === "ShiftLeft" ||
+        event.code === "ShiftRight"
+      ) {
         this.keyboardRunning = true;
       }
 
-      // Enter = same as the main button on the current screen
-      if (event.code === "Enter") this.pressMainButton();
+      // Enter presses the main button on the current screen
+      if (event.code === "Enter") {
+        this.pressMainButton();
+      }
     });
 
     window.addEventListener("keyup", (event) => {
-      if (event.code === "ShiftLeft" || event.code === "ShiftRight") {
+      if (
+        event.code === "ShiftLeft" ||
+        event.code === "ShiftRight"
+      ) {
         this.keyboardRunning = false;
       }
     });
 
-    // Click the buttons
+    // Mouse controls
     this.canvas.addEventListener("click", (event) => {
-      // Convert screen click to canvas coordinates
       const rect = this.canvas.getBoundingClientRect();
-      const x = (event.clientX - rect.left) * (this.canvas.width / rect.width);
-      const y = (event.clientY - rect.top) * (this.canvas.height / rect.height);
 
-      if (this.state === "menu" && this.startButton.contains(x, y)) {
+      const x =
+        (event.clientX - rect.left) *
+        (this.canvas.width / rect.width);
+
+      const y =
+        (event.clientY - rect.top) *
+        (this.canvas.height / rect.height);
+
+      if (
+        this.state === "menu" &&
+        this.startButton.contains(x, y)
+      ) {
         this.beginStart();
       } else if (this.state === "gameover") {
         if (this.playButton.contains(x, y)) {
@@ -226,7 +278,7 @@ export class Game {
     });
   }
 
-  // Starts the render loop (shows the menu first)
+  // Start rendering
   start() {
     if (this.running) return;
 
@@ -240,7 +292,7 @@ export class Game {
     this.running = false;
   }
 
-  // Play the button's click animation, then run its action
+  // Play button animation before performing its action
   press(button, action) {
     if (this.state === "pressing") return;
 
@@ -249,7 +301,12 @@ export class Game {
       return;
     }
 
-    this.pending = { button, action, from: this.state };
+    this.pending = {
+      button,
+      action,
+      from: this.state,
+    };
+
     this.pressTime = 0;
     this.state = "pressing";
   }
@@ -260,7 +317,7 @@ export class Game {
     this.press(this.startButton, () => this.startGame());
   }
 
-  // Enter / Space: Start on the menu, Play on the game over screen
+  // Enter / Space on menu or game-over screen
   pressMainButton() {
     if (this.state === "menu") {
       this.beginStart();
@@ -269,74 +326,147 @@ export class Game {
     }
   }
 
+  // Start a new game
   startGame() {
     this.player.reset();
     this.obstacles.reset();
+
+    // Reset movement
+    this.runSpeed = 0;
+    this.jumpMomentum = 0;
+    this.groundOffset = 0;
+
+    this.keyboardRunning = false;
+
+    this.pending = null;
+    this.pressTime = 0;
+
     this.state = "playing";
 
-    // Let main.js know a round began (shows the camera panel)
+    // Notify main.js to show the camera panel
     window.dispatchEvent(new CustomEvent("hampter-start"));
   }
 
+  // Return to the main menu
   goToMenu() {
     this.player.reset();
     this.obstacles.reset();
+
+    // Reset movement
     this.runSpeed = 0;
+    this.jumpMomentum = 0;
+    this.groundOffset = 0;
+
+    this.isRunning = false;
+    this.keyboardRunning = false;
+
+    this.pending = null;
+    this.pressTime = 0;
+
     this.state = "menu";
 
-    // Let main.js know we're back at the menu (hides the camera panel)
+    // Notify main.js to hide the camera panel
     window.dispatchEvent(new CustomEvent("hampter-menu"));
   }
 
-  // Space / webcam jump: starts or restarts the game, otherwise jumps
+  // Space / webcam jump
   jump() {
-    if (this.state === "menu" || this.state === "gameover") {
-      this.pressMainButton();
-      return;
+    // Start or restart through the menu button system
+    if (
+        this.state === "menu" ||
+        this.state === "gameover"
+    ) {
+        this.pressMainButton();
+        return;
     }
 
-    if (this.state === "playing") {
-      this.player.jump();
+    // Only jump while playing, grounded, and not in a hit animation
+    if (
+        this.state === "playing" &&
+        this.player.isGrounded &&
+        !this.player.actionAnimation
+    ) {
+        // Preserve forward momentum during the jump
+        this.jumpMomentum = this.runSpeed;
+
+        this.player.jump();
     }
-  }
+}
 
   update(dt) {
+    // Handle animated button presses
     if (this.state === "pressing") {
+      if (!this.pending) return;
+
       this.pressTime += dt;
 
       if (this.pressTime >= this.pending.button.duration) {
         const { action } = this.pending;
+
         this.pending = null;
         action();
       }
+
       return;
     }
 
+    if (this.state === "dying") {
+        this.player.updateAnimation(dt, false);
+
+        if (this.player.actionAnimationFinished) {
+            this.state = "gameover";
+
+            window.dispatchEvent(
+            new CustomEvent("hampter-gameover")
+            );
+        }
+
+        return;
+    }
+
+    // Only update runner gameplay while playing
     if (this.state !== "playing") return;
 
-    // Ease toward full speed when the user runs, and toward 0 when they stop
-    const target = this.isRunning || this.keyboardRunning ? 1 : 0;
-    this.runSpeed += (target - this.runSpeed) * Math.min(1, dt * 8);
+    const isRunning =
+      this.isRunning || this.keyboardRunning;
 
-    // Obstacles and ground only move while the user is running
-    this.groundOffset += 300 * dt * this.runSpeed;
-
+    // Update jump physics
     this.player.update(dt);
 
-    // Animate based on the same running state used by gameplay
-    this.player.updateAnimation(
-    dt,
-    this.isRunning || this.keyboardRunning
-    );
+    // Smooth running acceleration/deceleration
+    const target = isRunning ? 1 : 0;
 
-    this.obstacles.update(dt * this.runSpeed, this.player);
+    this.runSpeed +=
+      (target - this.runSpeed) * Math.min(1, dt * 8);
 
-    if (this.obstacles.isGameOver) {
-      this.state = "gameover";
-
-      // Let main.js know the round ended (hides the camera panel)
-      window.dispatchEvent(new CustomEvent("hampter-gameover"));
+    // Preserve momentum while airborne
+    if (!this.player.isGrounded) {
+      this.runSpeed = Math.max(
+        this.runSpeed,
+        this.jumpMomentum
+      );
     }
+
+    // Update hamster animations
+    this.player.updateAnimation(dt, isRunning);
+
+    // Move the ground
+    this.groundOffset += 300 * dt * this.runSpeed;
+
+    // Move obstacles and detect collisions
+    this.obstacles.update(
+        dt * this.runSpeed,
+        this.player
+        );
+
+        if (this.obstacles.wasHit) {
+            if (this.obstacles.isGameOver) {
+                this.player.playDeath();
+                this.state = "dying";
+            } else {
+                this.player.playHit();
+            }
+        }
   }
 
   drawBackground() {
@@ -350,25 +480,35 @@ export class Game {
 
     // Ground
     ctx.fillStyle = "#9BCB77";
-    ctx.fillRect(0, GROUND_Y, GAME_WIDTH, GAME_HEIGHT - GROUND_Y);
+    ctx.fillRect(
+      0,
+      GROUND_Y,
+      GAME_WIDTH,
+      GAME_HEIGHT - GROUND_Y
+    );
 
     // Ground outline
     ctx.fillStyle = "#5D9445";
     ctx.fillRect(0, GROUND_Y, GAME_WIDTH, 5);
 
-    // Scrolling ground marks so you can see the world moving
+    // Scrolling ground marks
     const spacing = 80;
     const offset = this.groundOffset % spacing;
+
     for (let x = -offset; x < GAME_WIDTH; x += spacing) {
       ctx.fillRect(x, GROUND_Y + 25, 30, 4);
     }
   }
 
-  // Animation time for a button, or null if it isn't the one being pressed
+  // Return animation time for the currently pressed button
   animTimeFor(button) {
-    if (this.state === "pressing" && this.pending.button === button) {
+    if (
+      this.state === "pressing" &&
+      this.pending?.button === button
+    ) {
       return this.pressTime;
     }
+
     return null;
   }
 
@@ -378,22 +518,34 @@ export class Game {
 
     ctx.textAlign = "center";
 
-    // Title image (900x500, drawn over the whole canvas)
+    // Title screen background
     if (this.titleImage) {
-      ctx.drawImage(this.titleImage, 0, 0, GAME_WIDTH, GAME_HEIGHT);
+      ctx.drawImage(
+        this.titleImage,
+        0,
+        0,
+        GAME_WIDTH,
+        GAME_HEIGHT
+      );
     } else {
-      // Fallback text if the image hasn't loaded
       ctx.fillStyle = "#000000";
       ctx.font = "bold 64px sans-serif";
-      ctx.fillText("HAMPTER RUN", GAME_WIDTH / 2, GAME_HEIGHT / 3);
+
+      ctx.fillText(
+        "HAMPTER RUN",
+        GAME_WIDTH / 2,
+        GAME_HEIGHT / 3
+      );
     }
 
+    // Start button
     b.draw(ctx, this.animTimeFor(b));
 
-    // Hint
+    // Hint text
     ctx.fillStyle = "#000000";
     ctx.font = "20px sans-serif";
     ctx.textAlign = "center";
+
     ctx.fillText(
       "Click START or press SPACE / ENTER",
       GAME_WIDTH / 2,
@@ -407,48 +559,79 @@ export class Game {
     const ctx = this.ctx;
 
     if (this.gameOverImage) {
-      // Game over screen (900x500, drawn over the whole canvas)
-      ctx.drawImage(this.gameOverImage, 0, 0, GAME_WIDTH, GAME_HEIGHT);
+      ctx.drawImage(
+        this.gameOverImage,
+        0,
+        0,
+        GAME_WIDTH,
+        GAME_HEIGHT
+      );
     } else {
-      // Fallback text if the image hasn't loaded
       ctx.textAlign = "center";
       ctx.fillStyle = "#000000";
       ctx.font = "bold 56px sans-serif";
-      ctx.fillText("GAME OVER", GAME_WIDTH / 2, GAME_HEIGHT / 2 - 20);
+
+      ctx.fillText(
+        "GAME OVER",
+        GAME_WIDTH / 2,
+        GAME_HEIGHT / 2 - 20
+      );
     }
 
-    this.playButton.draw(ctx, this.animTimeFor(this.playButton));
-    this.menuButton.draw(ctx, this.animTimeFor(this.menuButton));
+    // Game-over buttons
+    this.playButton.draw(
+      ctx,
+      this.animTimeFor(this.playButton)
+    );
 
-    // Hint text only when the game over image isn't being used
+    this.menuButton.draw(
+      ctx,
+      this.animTimeFor(this.menuButton)
+    );
+
+    // Fallback hint
     if (!this.gameOverImage) {
       ctx.fillStyle = "#000000";
       ctx.font = "22px sans-serif";
       ctx.textAlign = "center";
+
       ctx.fillText(
         "Press SPACE to play again",
         GAME_WIDTH / 2,
-        this.playButton.y + this.playButton.height + 40
+        this.playButton.y +
+          this.playButton.height +
+          40
       );
     }
+
     ctx.textAlign = "left";
   }
 
   draw() {
     this.drawBackground();
 
-    // While a button animation plays, keep showing the screen it came from
-    const screen = this.state === "pressing" ? this.pending.from : this.state;
+    // During button animation, show the previous screen
+    const screen =
+      this.state === "pressing"
+        ? this.pending?.from
+        : this.state;
 
     if (screen === "menu") {
       this.drawMenu();
       return;
     }
 
+    // Gameplay
     this.obstacles.draw(this.ctx);
     this.player.draw(this.ctx);
-    this.livesDisplay.draw(this.ctx, this.obstacles.lives);
 
+    // Lives HUD
+    this.livesDisplay.draw(
+      this.ctx,
+      this.obstacles.lives
+    );
+
+    // Game-over overlay
     if (screen === "gameover") {
       this.drawGameOver();
     }
