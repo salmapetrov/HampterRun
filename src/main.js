@@ -1,4 +1,3 @@
-
 import {
   createPoseTracker,
   drawPose
@@ -14,6 +13,38 @@ const canvas = document.querySelector("#overlay");
 const status = document.querySelector("#status");
 const start = document.querySelector("#start");
 const stop = document.querySelector("#stop");
+
+// The webcam view stays hidden until the camera is enabled
+const cameraBox = document.querySelector(".camera");
+cameraBox.style.display = "none";
+
+// The whole camera panel stays hidden until Start is clicked on the game menu
+const cameraPanel = document.querySelector(".camera-panel");
+
+function showPanel(show) {
+  if (show) {
+    cameraPanel.style.removeProperty("display");
+  } else {
+    cameraPanel.style.setProperty("display", "none", "important");
+  }
+}
+
+showPanel(false);
+
+window.addEventListener("hampter-start", () => {
+  console.log("hampter-start");
+  showPanel(true);
+});
+
+window.addEventListener("hampter-menu", () => {
+  console.log("hampter-menu");
+  showPanel(false);
+});
+
+window.addEventListener("hampter-gameover", () => {
+  console.log("hampter-gameover");
+  showPanel(false);
+});
 
 const gameCanvas = document.querySelector("#gameCanvas");
 const game = new Game(gameCanvas);
@@ -80,6 +111,8 @@ start.addEventListener("click", async () => {
     video.srcObject = stream;
     await video.play();
 
+    cameraBox.style.display = "";
+
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
 
@@ -113,6 +146,8 @@ stop.addEventListener("click", () => {
   // 5. Update the UI
   status.textContent = "Camera off";
   document.querySelector("#action").textContent = "Waiting for player...";
+  cameraBox.style.display = "none";
+  start.disabled = false;
 
 });
 
