@@ -61,6 +61,7 @@ export class Game {
     this.isRunning = false;
     this.keyboardRunning = false; // testing without a webcam: hold Shift
     this.runSpeed = 0; // 0 = standing still, 1 = full speed
+    this.jumpMomentum = 0;
     this.groundOffset = 0;
 
     window.addEventListener("hampter-running", (event) => {
@@ -165,8 +166,13 @@ export class Game {
   startGame() {
     this.player.reset();
     this.obstacles.reset();
+
+    this.runSpeed = 0;
+    this.jumpMomentum = 0;
+    this.groundOffset = 0;
+
     this.state = "playing";
-  }
+    }
 
   // Space / webcam jump: starts or restarts the game, otherwise jumps
   jump() {
@@ -180,8 +186,11 @@ export class Game {
       return;
     }
 
-    if (this.state === "playing") {
-      this.player.jump();
+    if (this.state === "playing" && this.player.isGrounded) {
+    // Save current forward speed before jumping
+    this.jumpMomentum = this.runSpeed;
+
+    this.player.jump();
     }
   }
 
@@ -197,21 +206,26 @@ export class Game {
 
     if (this.state !== "playing") return;
 
-    // Ease toward full speed when the user runs, and toward 0 when they stop
-    const target = this.isRunning || this.keyboardRunning ? 1 : 0;
-    this.runSpeed += (target - this.runSpeed) * Math.min(1, dt * 8);
+    // Check if the player is running
+    const isRunning = this.isRunning || this.keyboardRunning;
 
-    // Obstacles and ground only move while the user is running
-    this.groundOffset += 300 * dt * this.runSpeed;
-
+    // Update hamster physics (gravity, jumping, landing)
     this.player.update(dt);
 
-    // Animate based on the same running state used by gameplay
-    this.player.updateAnimation(
-    dt,
-    this.isRunning || this.keyboardRunning
-    );
+    // Smoothly accelerate/decelerate based on running
+    const target = isRunning ? 1 : 0;
+    this.runSpeed += (target - this.runSpeed) * Math.min(1, dt * 8);
 
+    // Preserve forward momentum while jumping
+    if (!this.player.isGrounded) {
+    this.runSpeed = Math.max(this.runSpeed, this.jumpMomentum);
+    }
+
+    // Update hamster sprite animations
+    this.player.updateAnimation(dt, isRunning);
+
+    // Scroll ground and obstacles using the updated speed
+    this.groundOffset += 300 * dt * this.runSpeed;
     this.obstacles.update(dt * this.runSpeed, this.player);
 
     if (this.obstacles.isGameOver) {
