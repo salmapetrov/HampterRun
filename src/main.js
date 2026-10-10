@@ -6,6 +6,10 @@ import {
 import { Game } from "./game/game.js";
 
 import { GestureDetector } from "./mediapipe/gestureDetector.js";
+import { GameMode } from "./game/gameState.js";
+import { PunchDetector } from "./mediapipe/punchDetector.js";
+
+const punchDetector = new PunchDetector();
 
 const gestures = new GestureDetector();
 const video = document.querySelector("#webcam");
@@ -122,6 +126,9 @@ start.addEventListener("click", async () => {
     status.textContent = `Error: ${error.message}`;
     start.disabled = false;
   }
+  
+
+
 });
 
 stop.addEventListener("click", () => {
@@ -173,6 +180,8 @@ function trackFrame() {
       landmarks,
       performance.now()
     );
+    //run our punches functions
+    const punches = punchDetector.update(landmarks);
 
     // Show the results on screen
     status.textContent =
@@ -183,6 +192,17 @@ function trackFrame() {
       "RUN:", actions.running,
       "| JUMP:", actions.jump
     );
+
+
+if (punches.leftPunch || punches.rightPunch) {
+  console.log("PUNCH!");
+
+  window.dispatchEvent(
+    new CustomEvent("hampter-action", {
+      detail: { action: "PUNCH" }
+    })
+  );
+}
 
     // Tell the game whether the player is running
     window.dispatchEvent(
