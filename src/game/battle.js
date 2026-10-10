@@ -39,7 +39,7 @@ const BULLET_DAMAGE = 5;
 const BULLET_SPEED = 650; // pixels per second
 const BULLET_GAP = 0.35; // seconds between shots
 const SLASH_DAMAGE = 35;
-const SLASH_HIT_CHANCE = 0.7; // 70% of slashes land
+const SLASH_HIT_CHANCE = 0.90; // 90% of slashes land
 
 // ---- Layout (canvas is 900 x 500, white background) ----
 const FLOOR_Y = 410;
@@ -90,6 +90,8 @@ export class Battle {
 
     this.playerHp = MAX_HP;
     this.evilHp = MAX_HP;
+    this.dodgeTime = 0;
+    this.dodgeDuration = 0.7; // Jump lasts 0.7 seconds
 
     this.phase = "intro";
     this.phaseTime = 0;
@@ -135,6 +137,24 @@ export class Battle {
     this.setPhase("attack");
   }
 
+  dodge() {
+    // Only dodge during Evil Hampter's turn
+    if (this.phase !== "enemy") return;
+  
+    // Don't restart a jump while already jumping
+    if (this.dodgeTime > 0) return;
+  
+    this.dodgeTime = this.dodgeDuration;
+  
+    console.log("HAMSTER DODGED!");
+  }
+
+  handleAction(action) {
+    if (action === "PUNCH") {
+      this.choose("slash");
+    }
+  }
+
   // ---- Update ----
 
   update(dt) {
@@ -161,6 +181,7 @@ export class Battle {
     } else if (this.phase === "won" || this.phase === "lost") {
       if (this.phaseTime >= 2) this.result = this.phase;
     }
+    this.dodgeTime = Math.max(0, this.dodgeTime - dt);
   }
 
   startEnemyTurn() {
@@ -184,9 +205,23 @@ export class Battle {
 
       if (b.x <= targetX) {
         b.hit = true;
-        this.playerHp = Math.max(0, this.playerHp - BULLET_DAMAGE);
-        this.anim.play("hit");
-        this.popup(`-${BULLET_DAMAGE}`, targetX, b.y - 40, "#D62828");
+      
+        if (this.dodgeTime > 0) {
+          // Hamster is jumping, so the bullet misses!
+          this.popup("DODGE!", targetX, b.y - 40, "#16A34A");
+        } else {
+          // Hamster didn't dodge, so it takes damage
+          this.playerHp = Math.max(0, this.playerHp - BULLET_DAMAGE);
+      
+          this.anim.play("hit");
+      
+          this.popup(
+            `-${BULLET_DAMAGE}`,
+            targetX,
+            b.y - 40,
+            "#D62828"
+          );
+        }
       }
     }
     this.bullets = this.bullets.filter((b) => !b.hit);
@@ -200,6 +235,7 @@ export class Battle {
         this.setPhase("choose");
       }
     }
+    
   }
 
   fireBullet() {
@@ -299,7 +335,17 @@ export class Battle {
     const img = this.images[this.anim.name];
     const size = 48 * HAMSTER_SCALE;
     // Feet are about 2 rows above the bottom of each 48px frame
-    const y = FLOOR_Y - 46 * HAMSTER_SCALE;
+    let y = FLOOR_Y - 46 * HAMSTER_SCALE;
+
+    if (this.dodgeTime > 0) {
+      const progress =
+        1 - this.dodgeTime / this.dodgeDuration;
+    
+      // Move up and then come back down
+      const jumpHeight = Math.sin(progress * Math.PI) * 90;
+    
+      y -= jumpHeight;
+    }
 
     if (img) {
       ctx.drawImage(img, this.anim.frame * 48, 0, 48, 48, Math.round(this.hamsterX), y, size, size);

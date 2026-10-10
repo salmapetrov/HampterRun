@@ -1,29 +1,26 @@
+
 import {
   createPoseTracker,
   drawPose
 } from "./mediapipe/poseTracker.js";
 
 import { Game } from "./game/game.js";
-
 import { GestureDetector } from "./mediapipe/gestureDetector.js";
-import { GameMode } from "./game/gameState.js";
 import { PunchDetector } from "./mediapipe/punchDetector.js";
 
 const punchDetector = new PunchDetector();
-
 const gestures = new GestureDetector();
+
 const video = document.querySelector("#webcam");
 const canvas = document.querySelector("#overlay");
 const status = document.querySelector("#status");
 const start = document.querySelector("#start");
 const stop = document.querySelector("#stop");
-
-// The webcam view stays hidden until the camera is enabled
 const cameraBox = document.querySelector(".camera");
-cameraBox.style.display = "none";
-
-// The whole camera panel stays hidden until Start is clicked on the game menu
 const cameraPanel = document.querySelector(".camera-panel");
+
+// Keep the webcam hidden until it is enabled.
+cameraBox.style.display = "none";
 
 function showPanel(show) {
   if (show) {
@@ -53,7 +50,7 @@ window.addEventListener("hampter-gameover", () => {
 const gameCanvas = document.querySelector("#gameCanvas");
 const game = new Game(gameCanvas);
 
-// Wait for the level images to load before starting the game loop
+// Wait for images to load before starting the game.
 game.loadAssets().then(() => game.start());
 
 window.addEventListener("keydown", (event) => {
@@ -65,23 +62,21 @@ window.addEventListener("keydown", (event) => {
 
 let tracker;
 let lastVideoTime = -1;
+let cameraRunning = false;
 
+// Body position detection for future movement controls
 function detectBodyPosition(landmarks) {
-  // MediaPipe landmark indexes
   const leftShoulder = landmarks[11];
   const rightShoulder = landmarks[12];
   const leftHip = landmarks[23];
   const rightHip = landmarks[24];
 
-  // Find horizontal center of shoulders
   const shoulderX =
     (leftShoulder.x + rightShoulder.x) / 2;
 
-  // Find horizontal center of hips
   const hipX =
     (leftHip.x + rightHip.x) / 2;
 
-  // Difference between upper body and hips
   const lean = shoulderX - hipX;
 
   let direction = "CENTER";
@@ -100,6 +95,7 @@ function detectBodyPosition(landmarks) {
   };
 }
 
+// START WEBCAM
 start.addEventListener("click", async () => {
   start.disabled = true;
   status.textContent = "Loading pose model...";
@@ -121,110 +117,157 @@ start.addEventListener("click", async () => {
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
 
+    lastVideoTime = -1;
+    cameraRunning = true;
+
     status.textContent = "Tracking!";
+
     requestAnimationFrame(trackFrame);
+
   } catch (error) {
     status.textContent = `Error: ${error.message}`;
     start.disabled = false;
   }
-  
-
-
 });
 
+// STOP WEBCAM
 stop.addEventListener("click", () => {
+  cameraRunning = false;
 
-  // get the current webcam stream
   const stream = video.srcObject;
 
-  // stop every media track
   if (stream) {
     stream.getTracks().forEach(track => {
       track.stop();
     });
   }
 
-  // disconnect the stream from the video
   video.srcObject = null;
 
-  // clear drawing
   const ctx = canvas.getContext("2d");
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-  // 5. Update the UI
+  // Stop sending running movement
+  window.dispatchEvent(
+    new CustomEvent("hampter-running", {
+      detail: { running: false }
+    })
+  );
+
   status.textContent = "Camera off";
-  document.querySelector("#action").textContent = "Waiting for player...";
+
+  const actionLabel = document.querySelector("#action");
+
+  if (actionLabel) {
+    actionLabel.textContent = "Waiting for player...";
+  }
+
   cameraBox.style.display = "none";
   start.disabled = false;
-
 });
 
+// MEDIAPIPE TRACKING LOOP
 function trackFrame() {
+
+  if (!cameraRunning) return;
+
   if (
     video.readyState >= 2 &&
     video.currentTime !== lastVideoTime
   ) {
     lastVideoTime = video.currentTime;
 
+    const now = performance.now();
+
     const result = tracker.detectForVideo(
       video,
-      performance.now()
+      now
     );
 
     const landmarks = result.landmarks[0];
 
-    // Draw the skeleton on the webcam
+    // Draw body skeleton
     drawPose(canvas, landmarks);
 
-    // Run our gesture detection functions
-    const actions = gestures.update(
-      landmarks,
-      performance.now()
-    );
-    //run our punches functions
-    const punches = punchDetector.update(landmarks);
+    // =====================================
+    // BATTLE SCENE - PUNCH DETECTION
+    // =====================================
 
-    // Show the results on screen
-    status.textContent =
-      `RUN: ${actions.running} | JUMP: ${actions.jump}`;
+    if (game.scene === "battle") {
 
-    // Show results in browser console
-    console.log(
-      "RUN:", actions.running,
-      "| JUMP:", actions.jump
-    );
+      const punches = punchDetector.update(landmarks);
 
+      status.textContent =
+        `LEFT: ${punches.leftPunch} | RIGHT: ${punches.rightPunch}`;
 
-if (punches.leftPunch || punches.rightPunch) {
-  console.log("PUNCH!");
+      // Either arm triggers SLASH
+      if (punches.leftPunch || punches.rightPunch) {
 
-  window.dispatchEvent(
-    new CustomEvent("hampter-action", {
-      detail: { action: "PUNCH" }
-    })
+        console.log("SLASH DETECTED!");
+
+        window.dispatchEvent(
+          new CustomEvent("hampter-action", {
+            detail: {
+              action: "SLASH"
+            }
+          })
+        );
+
+      }
+      // Detect jumping during battle
+const actions = gestures.update(landmarks, now);
+
+      if (actions.jump) {
+        console.log("Jump!");
+        window.dispatchEvent(
+        new CustomEvent("hampter-action", {
+        detail: { action: "DODGE" }
+        })
   );
 }
 
-    // Tell the game whether the player is running
-    window.dispatchEvent(
-      new CustomEvent("hampter-running", {
-        detail: {
-          running: actions.running
-        }
-      })
-    );
 
-    // Only send a jump event when a jump is detected
-    if (actions.jump) {
-      console.log("JUMP DETECTED!");
+    }
 
+    // =====================================
+    // RUNNER SCENE - RUNNING AND JUMPING
+    // =====================================
+
+    else if (game.state === "playing") {
+
+      const actions = gestures.update(
+        landmarks,
+        now
+      );
+
+      status.textContent =
+        `RUN: ${actions.running} | JUMP: ${actions.jump}`;
+
+      // Send running movement
       window.dispatchEvent(
-        new CustomEvent("hampter-action", {
+        new CustomEvent("hampter-running", {
           detail: {
-            action: "JUMP"
+            running: actions.running
           }
         })
       );
+
+      // Send jump
+      if (actions.jump) {
+
+        console.log("JUMP DETECTED!");
+
+        window.dispatchEvent(
+          new CustomEvent("hampter-action", {
+            detail: {
+              action: "JUMP"
+            }
+          })
+        );
+      }
+
+    } else {
+      status.textContent = "Waiting for gameplay...";
     }
   }
 
