@@ -17,6 +17,7 @@ body {
 }
 
 #gameCanvas {
+  image-rendering: pixelated; /* keep pixel art crisp when stretched */
   position: fixed;
   inset: 0;
   display: block;
