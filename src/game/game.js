@@ -27,6 +27,7 @@ const BUTTON_DIR = "/assets/menu/Buttons";
 const TITLE_IMAGE = "/assets/backgrounds/title.png";
 const GAME_OVER_IMAGE = "/assets/backgrounds/gameOver.png";
 const INSTRUCTIONS_IMAGE = "/assets/backgrounds/instructions.png";
+const MENU_BACKGROUND_IMAGE = "/assets/backgrounds/background4.png";
 
 // Home icon (bottom right on the instructions and gameplay screens)
 const ICON_DIR = "/assets/menu/Icons";
@@ -173,7 +174,7 @@ export class Game {
     // Buttons
     this.startButton = blueButton("Start", {
       centerX: GAME_WIDTH / 2,
-      y: GAME_HEIGHT / 2,
+      y: GAME_HEIGHT / 2 + 60,
       width: 260,
     });
     this.playButton = blueButton("Play", {
@@ -221,6 +222,12 @@ export class Game {
       if (!img) {
         console.warn("Instructions image not found:", INSTRUCTIONS_IMAGE);
       }
+    });
+
+    this.menuBackgroundImage = null;
+    loadImage(MENU_BACKGROUND_IMAGE).then((img) => {
+      this.menuBackgroundImage = img;
+      if (!img) console.warn("Menu background not found:", MENU_BACKGROUND_IMAGE);
     });
 
     this.running = false;
@@ -721,12 +728,6 @@ export class Game {
 
     b.draw(ctx, this.animTimeFor(b));
 
-    // Hint
-    ctx.fillStyle = "#000000";
-    ctx.font = "20px sans-serif";
-    ctx.textAlign = "center";
-    ;
-
     ctx.textAlign = "left";
   }
 
@@ -805,19 +806,25 @@ export class Game {
     ctx.textAlign = "left";
   }
 
-  // Sky and grass behind the title and instructions screens (the images are see-through)
+  // Forest behind the title and instructions screens (those images are see-through)
   drawMenuBackground() {
     const ctx = this.ctx;
 
-    // Sky
+    if (this.menuBackgroundImage) {
+      // Scale to the canvas height and show the left part, like the start of the level
+      const img = this.menuBackgroundImage;
+      const scale = GAME_HEIGHT / img.naturalHeight;
+      ctx.drawImage(this.menuBackgroundImage, 0, 0, GAME_WIDTH, GAME_HEIGHT);
+      return;
+    }
+
+    // Fallback sky and grass if the image is missing
     ctx.fillStyle = "#BFE8FF";
     ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
 
-    // Ground
     ctx.fillStyle = "#9BCB77";
     ctx.fillRect(0, GROUND_Y, GAME_WIDTH, GAME_HEIGHT - GROUND_Y);
 
-    // Ground outline
     ctx.fillStyle = "#5D9445";
     ctx.fillRect(0, GROUND_Y, GAME_WIDTH, 5);
   }
