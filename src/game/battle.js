@@ -21,6 +21,7 @@ export const BATTLE_IMAGES = {
   slash: `${HAMSTER_DIR}/MR Cookies_Attack02_48x48.png`, // sweeping arc
   death: `${HAMSTER_DIR}/MR Cookies_Death_48x48.png`,
   evil: "/assets/hampter/hampter-evil.png",
+  background: "/assets/backgrounds/battle.png",
 };
 
 // Our hampter's sprite sheets: one row of 48x48 frames each
@@ -41,8 +42,9 @@ const BULLET_GAP = 0.35; // seconds between shots
 const SLASH_DAMAGE = 35;
 const SLASH_HIT_CHANCE = 0.90; // 90% of slashes land
 
-// ---- Layout (canvas is 900 x 500, white background) ----
-const FLOOR_Y = 410;
+// ---- Layout (canvas is 900 x 500, same size as battle.png) ----
+// Feet land on the two hex platforms in the background
+const FLOOR_Y = 390;
 const HAMSTER_SCALE = 5; // 48px frames drawn at 240px
 const HAMSTER_HOME_X = 110; // left edge of our hampter's frame
 const HAMSTER_STRIKE_X = 390; // how far it dashes in to attack
@@ -313,13 +315,13 @@ export class Battle {
   draw(ctx) {
     ctx.imageSmoothingEnabled = false;
 
-    // White battle screen (placeholder until there's a battle background)
-    ctx.fillStyle = "#FFFFFF";
-    ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
-
-    // Floor line
-    ctx.fillStyle = "#DDDDDD";
-    ctx.fillRect(0, FLOOR_Y, GAME_WIDTH, 2);
+    // Forest bridge background (plain white if it failed to load)
+    if (this.images.background) {
+      ctx.drawImage(this.images.background, 0, 0, GAME_WIDTH, GAME_HEIGHT);
+    } else {
+      ctx.fillStyle = "#FFFFFF";
+      ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+    }
 
     this.drawEvil(ctx);
     this.drawHamster(ctx);
