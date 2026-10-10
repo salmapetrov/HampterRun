@@ -373,24 +373,25 @@ export class Game {
   jump() {
     // Start or restart through the menu button system
     if (
-      this.state === "menu" ||
-      this.state === "gameover"
+        this.state === "menu" ||
+        this.state === "gameover"
     ) {
-      this.pressMainButton();
-      return;
+        this.pressMainButton();
+        return;
     }
 
-    // Only jump while playing and grounded
+    // Only jump while playing, grounded, and not in a hit animation
     if (
-      this.state === "playing" &&
-      this.player.isGrounded
+        this.state === "playing" &&
+        this.player.isGrounded &&
+        !this.player.actionAnimation
     ) {
-      // Preserve forward momentum during the jump
-      this.jumpMomentum = this.runSpeed;
+        // Preserve forward momentum during the jump
+        this.jumpMomentum = this.runSpeed;
 
-      this.player.jump();
+        this.player.jump();
     }
-  }
+}
 
   update(dt) {
     // Handle animated button presses
@@ -407,6 +408,20 @@ export class Game {
       }
 
       return;
+    }
+
+    if (this.state === "dying") {
+        this.player.updateAnimation(dt, false);
+
+        if (this.player.actionAnimationFinished) {
+            this.state = "gameover";
+
+            window.dispatchEvent(
+            new CustomEvent("hampter-gameover")
+            );
+        }
+
+        return;
     }
 
     // Only update runner gameplay while playing
@@ -440,19 +455,18 @@ export class Game {
 
     // Move obstacles and detect collisions
     this.obstacles.update(
-      dt * this.runSpeed,
-      this.player
-    );
+        dt * this.runSpeed,
+        this.player
+        );
 
-    // Check game over
-    if (this.obstacles.isGameOver) {
-      this.state = "gameover";
-
-      // Notify main.js to hide the camera panel
-      window.dispatchEvent(
-        new CustomEvent("hampter-gameover")
-      );
-    }
+        if (this.obstacles.wasHit) {
+            if (this.obstacles.isGameOver) {
+                this.player.playDeath();
+                this.state = "dying";
+            } else {
+                this.player.playHit();
+            }
+        }
   }
 
   drawBackground() {
