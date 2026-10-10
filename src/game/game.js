@@ -205,6 +205,13 @@ export class Game {
     this.groundOffset += 300 * dt * this.runSpeed;
 
     this.player.update(dt);
+
+    // Animate based on the same running state used by gameplay
+    this.player.updateAnimation(
+    dt,
+    this.isRunning || this.keyboardRunning
+    );
+
     this.obstacles.update(dt * this.runSpeed, this.player);
 
     if (this.obstacles.isGameOver) {
