@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Hampter Vision</title>
+    <style>
+      :root {
+        color-scheme: dark;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        background: #171923;
+        color: white;
+        font-family: Arial, sans-serif;
+        text-align: center;
+      }
+
+      h1 {
+        margin-bottom: 0.5rem;
+      }
+
+      button {
+        margin: 12px 0;
+        padding: 10px 20px;
+        border: none;
+        border-radius: 999px;
+        background: #60a5fa;
+        color: #04111d;
+        font-weight: 700;
+        cursor: pointer;
+      }
+
+      .camera {
+        position: relative;
+        width: min(90vw, 640px);
+        margin: 20px auto;
+        border-radius: 16px;
+        overflow: hidden;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+      }
+
+      video {
+        width: 100%;
+        display: block;
+        background: #000;
+      }
+
+      canvas {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        pointer-events: none;
+      }
+    </style>
+    <script type="module" crossorigin src="/assets/index-BtsTinuP.js"></script>
+  </head>
+  <body>
+    <h1>Hampter Vision</h1>
+    <button id="start">Enable Camera</button>
+    <p id="status">Camera off</p>
+
+    <div class="camera">
+      <video id="webcam" autoplay muted playsinline></video>
+      <canvas id="overlay"></canvas>
+    </div>
+
+    <h2 id="action">Waiting for player...</h2>
+
+  </body>
+</html>
