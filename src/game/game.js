@@ -2,11 +2,25 @@ import {
   GAME_WIDTH,
   GAME_HEIGHT,
   GROUND_Y,
+  WORLD_WIDTH,
+  MAX_LAPS,
+  SCROLL_SPEED,
+  PLAYER_X,
 } from "./constants.js";
 
 import { Player } from "./player.js";
-import { ObstacleManager } from "./collision.js";
+import { ObstacleManager, isColliding } from "./collision.js";
 import { LivesDisplay } from "./hud.js";
+import { BACKGROUND_IMAGE, drawGroundDebug } from "./world.js";
+import { SPIKE_IMAGES } from "./obstacles.js";
+import { OBJECT_IMAGES, createObjects, hitbox, drawObjects } from "./objects.js";
+import { Battle, BATTLE_IMAGES } from "./battle.js";
+
+// Seconds the screen glows blue after touching a gem (just a visual effect)
+const GEM_GLOW_TIME = 1;
+
+// Seconds the sad hampter spends turning evil before the battle starts
+const TRANSFORM_TIME = 1.2;
 
 // ---- Button assets (files in /public are served from the site root) ----
 const BUTTON_DIR = "/assets/menu/Buttons";
@@ -124,7 +138,9 @@ function loadImage(src) {
 }
 
 // Game states:
-//   "menu" -> "playing" -> "gameover" -> "playing" (Play) or "menu" (Menu)
+//   "menu" -> "playing" -> "gameover" or "win" -> "playing" (Play) or "menu" (Menu)
+//   "dying" = death animation playing before "gameover"
+//   "win" = reached the end of the last background copy
 //   "pressing" = a button's click animation is playing, then its action runs
 export class Game {
   constructor(canvas) {
@@ -135,7 +151,7 @@ export class Game {
     this.canvas.height = GAME_HEIGHT;
 
     this.player = new Player();
-    this.obstacles = new ObstacleManager(GAME_WIDTH);
+    this.obstacles = new ObstacleManager();
     this.livesDisplay = new LivesDisplay();
 
     this.state = "menu";
@@ -182,7 +198,39 @@ export class Game {
     this.isRunning = false;
     this.keyboardRunning = false; // testing without a webcam: hold Shift
     this.runSpeed = 0; // 0 = standing still, 1 = full speed
-    this.groundOffset = 0;
+    this.jumpMomentum = 0; // runSpeed at the moment of the last jump
+
+    // How far the hamster has run, in pixels
+    this.distance = 0;
+
+    // Camera: how far the world has scrolled to the left, in pixels
+    this.scrollX = 0;
+
+    // Gems and sad hampters in the level (see objects.js).
+    // Spikes live in this.obstacles.
+    this.objects = createObjects(0);
+
+    // While playing: "run" = normal level, "transform" = a sad hampter is
+    // turning evil, "battle" = boss fight (see battle.js)
+    this.scene = "run";
+    this.sceneTime = 0;
+    this.battle = null;
+    this.battleEnemy = null; // the map object we're fighting
+
+    // The level repeats: the highest copy ("lap") whose spikes/gems exist so far
+    this.lastLap = 0;
+
+    // Seconds of blue gem glow left (0 = no glow)
+    this.gemGlowTime = 0;
+
+    // Press D to show/hide the ground path debug line and hitboxes
+    this.showGroundDebug = false;
+
+    // Filled in by loadAssets() before the loop starts
+    this.backgroundImage = null;
+    this.spikeImages = {};
+    this.objectImages = {}; // gem, sad, evil
+    this.battleImages = {};
 
     window.addEventListener("hampter-running", (event) => {
       this.isRunning = event.detail.running;
@@ -190,6 +238,12 @@ export class Game {
 
     window.addEventListener("hampter-action", (event) => {
       if (event.detail.action === "JUMP") this.jump();
+
+      // Webcam slash gesture: attack in the battle. To hook up MediaPipe, send
+      //   new CustomEvent("hampter-action", { detail: { action: "SLASH" } })
+      if (event.detail.action === "SLASH" && this.scene === "battle" && this.battle) {
+        this.battle.choose("slash");
+      }
     });
 
     window.addEventListener("keydown", (event) => {
@@ -199,6 +253,11 @@ export class Game {
 
       // Enter = same as the main button on the current screen
       if (event.code === "Enter") this.pressMainButton();
+
+      if (event.code === "KeyD") this.showGroundDebug = !this.showGroundDebug;
+
+      // Battle: 1 = slash
+      if (this.scene === "battle" && this.battle) this.battle.handleKey(event.code);
     });
 
     window.addEventListener("keyup", (event) => {
@@ -216,7 +275,9 @@ export class Game {
 
       if (this.state === "menu" && this.startButton.contains(x, y)) {
         this.beginStart();
-      } else if (this.state === "gameover") {
+      } else if (this.state === "playing" && this.scene === "battle") {
+        this.battle.handleClick(x, y);
+      } else if (this.isEndScreen()) {
         if (this.playButton.contains(x, y)) {
           this.press(this.playButton, () => this.startGame());
         } else if (this.menuButton.contains(x, y)) {
@@ -224,6 +285,47 @@ export class Game {
         }
       }
     });
+  }
+
+  // Load the level images. main.js waits for this before calling start().
+  async loadAssets() {
+    this.backgroundImage = await loadImage(BACKGROUND_IMAGE);
+    if (!this.backgroundImage) {
+      console.warn("Background image not found:", BACKGROUND_IMAGE);
+    }
+
+    // Spike sprites
+    for (const [name, src] of Object.entries(SPIKE_IMAGES)) {
+      this.spikeImages[name] = await loadImage(src);
+      if (!this.spikeImages[name]) console.warn("Spike image not found:", src);
+    }
+
+    // Gem and sad/evil hampter sprites
+    for (const [name, src] of Object.entries(OBJECT_IMAGES)) {
+      this.objectImages[name] = await loadImage(src);
+      if (!this.objectImages[name]) console.warn("Object image not found:", src);
+    }
+
+    // Battle scene sprites
+    for (const [name, src] of Object.entries(BATTLE_IMAGES)) {
+      this.battleImages[name] = await loadImage(src);
+      if (!this.battleImages[name]) console.warn("Battle image not found:", src);
+    }
+  }
+
+  // Put the level back to the start: camera, hamster, spikes, gems, glow
+  resetLevel() {
+    this.distance = 0;
+    this.scrollX = 0;
+    this.gemGlowTime = 0;
+    this.jumpMomentum = 0;
+    this.objects = createObjects(0);
+    this.lastLap = 0;
+    this.scene = "run";
+    this.battle = null;
+    this.battleEnemy = null;
+    this.player.reset();
+    this.obstacles.reset();
   }
 
   // Starts the render loop (shows the menu first)
@@ -260,18 +362,22 @@ export class Game {
     this.press(this.startButton, () => this.startGame());
   }
 
-  // Enter / Space: Start on the menu, Play on the game over screen
+  // Game over and win screens both show the Play / Menu buttons
+  isEndScreen() {
+    return this.state === "gameover" || this.state === "win";
+  }
+
+  // Enter / Space: Start on the menu, Play on the game over / win screen
   pressMainButton() {
     if (this.state === "menu") {
       this.beginStart();
-    } else if (this.state === "gameover") {
+    } else if (this.isEndScreen()) {
       this.press(this.playButton, () => this.startGame());
     }
   }
 
   startGame() {
-    this.player.reset();
-    this.obstacles.reset();
+    this.resetLevel();
     this.state = "playing";
 
     // Let main.js know a round began (shows the camera panel)
@@ -279,8 +385,7 @@ export class Game {
   }
 
   goToMenu() {
-    this.player.reset();
-    this.obstacles.reset();
+    this.resetLevel();
     this.runSpeed = 0;
     this.state = "menu";
 
@@ -290,12 +395,17 @@ export class Game {
 
   // Space / webcam jump: starts or restarts the game, otherwise jumps
   jump() {
-    if (this.state === "menu" || this.state === "gameover") {
+    if (this.state === "menu" || this.isEndScreen()) {
       this.pressMainButton();
       return;
     }
 
-    if (this.state === "playing") {
+    // No jumping while a hampter turns evil or during the battle
+    if (this.state === "playing" && this.scene === "run") {
+      // Remember take-off speed so the hamster keeps moving forward mid-air,
+      // even if the webcam stops seeing "running" while you jump (Thaira's idea)
+      if (this.player.isGrounded) this.jumpMomentum = this.runSpeed;
+
       this.player.jump();
     }
   }
@@ -312,49 +422,214 @@ export class Game {
       return;
     }
 
+    // Last life lost: let the death animation finish, then show game over
+    // (hit/death flow from Thaira's game.js)
+    if (this.state === "dying") {
+      this.player.updateAnimation(dt, false);
+
+      if (this.player.actionAnimationFinished) {
+        this.state = "gameover";
+
+        // Let main.js know the round ended (hides the camera panel)
+        window.dispatchEvent(new CustomEvent("hampter-gameover"));
+      }
+      return;
+    }
+
     if (this.state !== "playing") return;
 
-    // Ease toward full speed when the user runs, and toward 0 when they stop
-    const target = this.isRunning || this.keyboardRunning ? 1 : 0;
-    this.runSpeed += (target - this.runSpeed) * Math.min(1, dt * 8);
+    // Branch on the scene: the level is frozen during transform and battle
+    if (this.scene === "transform") {
+      this.updateTransform(dt);
+      return;
+    }
+    if (this.scene === "battle") {
+      this.battle.update(dt);
+      if (this.battle.result) this.endBattle(this.battle.result);
+      return;
+    }
 
-    // Obstacles and ground only move while the user is running
-    this.groundOffset += 300 * dt * this.runSpeed;
+    this.updateRun(dt);
 
-    this.player.update(dt);
-    this.obstacles.update(dt * this.runSpeed, this.player);
+    // Update hamster animations (run when moving, idle when standing still)
+    this.player.updateAnimation(dt, this.isRunning || this.keyboardRunning);
 
-    if (this.obstacles.isGameOver) {
-      this.state = "gameover";
+    if (this.obstacles.wasHit) {
+      if (this.obstacles.isGameOver) {
+        this.player.playDeath();
+        this.state = "dying";
+      } else {
+        this.player.playHit();
+      }
+    }
 
-      // Let main.js know the round ended (hides the camera panel)
+    // Made it to the end of the last background copy: show the win screen
+    if (this.state === "playing" && this.distance >= this.maxDistance()) {
+      this.state = "win";
+
+      // Same as game over for main.js (hides the camera panel)
       window.dispatchEvent(new CustomEvent("hampter-gameover"));
     }
   }
 
-  drawBackground() {
+  // A sad hampter was touched: it shakes as it turns evil, then the battle starts
+  updateTransform(dt) {
+    this.sceneTime += dt;
+    this.player.updateAnimation(dt, false); // stand still (idle)
+
+    if (this.sceneTime >= TRANSFORM_TIME) {
+      this.scene = "battle";
+      this.battle = new Battle(this.battleImages);
+    }
+  }
+
+  // Battle over. Won: the evil hampter is gone. Lost: lose a heart (game over
+  // if it was the last one). Either way, back to running.
+  endBattle(result) {
+    this.battleEnemy.state = "gone";
+    this.battleEnemy = null;
+    this.battle = null;
+    this.scene = "run";
+
+    if (result === "lost") {
+      this.obstacles.lives = Math.max(0, this.obstacles.lives - 1);
+      if (this.obstacles.isGameOver) {
+        this.player.playDeath();
+        this.state = "dying";
+      } else {
+        this.player.playHit();
+      }
+    }
+  }
+
+  // The level is MAX_LAPS copies of the background. The hamster stops when
+  // its right edge reaches the end of the last copy.
+  maxDistance() {
+    return MAX_LAPS * WORLD_WIDTH - PLAYER_X - this.player.width;
+  }
+
+  // One frame of play: move, scroll, spikes, and gems
+  updateRun(dt) {
+    // Ease toward full speed when the webcam (or Shift) sees running, toward 0 when not
+    const target = this.isRunning || this.keyboardRunning ? 1 : 0;
+    this.runSpeed += (target - this.runSpeed) * Math.min(1, dt * 8);
+
+    // Preserve momentum while airborne
+    if (!this.player.isGrounded) {
+      this.runSpeed = Math.max(this.runSpeed, this.jumpMomentum);
+    }
+
+    // Count down the gem glow effect
+    this.gemGlowTime = Math.max(0, this.gemGlowTime - dt);
+
+    // Run forward, but not past the end of the last background copy
+    this.distance = Math.min(
+      this.distance + SCROLL_SPEED * this.runSpeed * dt,
+      this.maxDistance()
+    );
+
+    // Camera follows the hamster until the last copy's right edge is on screen.
+    // After that the camera stops and the hamster runs the rest of the way.
+    this.scrollX = Math.min(this.distance, MAX_LAPS * WORLD_WIDTH - GAME_WIDTH);
+
+    this.player.update(dt, this.distance + PLAYER_X);
+
+    // When the next copy of the level comes into view, give it fresh
+    // spikes and gems, and drop gems that scrolled off the left
+    const rightEdgeLap = Math.min(
+      Math.floor((this.scrollX + GAME_WIDTH) / WORLD_WIDTH),
+      MAX_LAPS - 1
+    );
+    while (this.lastLap < rightEdgeLap) {
+      this.lastLap++;
+      this.obstacles.addLap(this.lastLap);
+      this.objects.push(...createObjects(this.lastLap));
+    }
+    this.objects = this.objects.filter((o) => o.x + o.w >= this.scrollX);
+
+    // Spikes: hits and lives (teammate's ObstacleManager)
+    this.obstacles.update(dt, this.player, this.scrollX);
+
+    // Gems: touching one launches the hamster up to the floating blocks.
+    // The flight always moves forward at full speed (jumpMomentum = 1), so it
+    // follows the same path through the gap however fast the player was running.
+    for (const obj of this.objects) {
+      if (obj.type !== "gem" || obj.state !== "ready") continue;
+      if (isColliding(this.player, hitbox(obj))) {
+        obj.state = "collected";
+        this.player.launch();
+        this.jumpMomentum = 1;
+        this.gemGlowTime = GEM_GLOW_TIME;
+      }
+    }
+
+    // Sad hampters: bumping into one turns it evil and starts the battle
+    for (const obj of this.objects) {
+      if (obj.type !== "sad" || obj.state !== "sad") continue;
+      if (isColliding(this.player.hurtbox, hitbox(obj))) {
+        obj.state = "evil";
+        this.battleEnemy = obj;
+        this.scene = "transform";
+        this.sceneTime = 0;
+        return;
+      }
+    }
+  }
+
+  // Draws the level in world coordinates. Call inside the camera translate.
+  drawWorld() {
     const ctx = this.ctx;
 
-    ctx.clearRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+    // The 1920px background repeats. Draw each copy that's on screen:
+    // copy n sits at world x = n * WORLD_WIDTH (usually 1 or 2 are visible).
+    const firstLap = Math.floor(this.scrollX / WORLD_WIDTH);
+    const lastLap = Math.floor((this.scrollX + GAME_WIDTH) / WORLD_WIDTH);
 
-    // Sky
-    ctx.fillStyle = "#BFE8FF";
+    for (let lap = firstLap; lap <= lastLap; lap++) {
+      const x = lap * WORLD_WIDTH;
+
+      if (this.backgroundImage) {
+        ctx.drawImage(this.backgroundImage, x, 0);
+      } else {
+        // Fallback sky if the image is missing
+        ctx.fillStyle = "#BFE8FF";
+        ctx.fillRect(x, 0, WORLD_WIDTH, GAME_HEIGHT);
+      }
+
+      if (this.showGroundDebug) {
+        ctx.save();
+        ctx.translate(x, 0);
+        drawGroundDebug(ctx);
+        ctx.restore();
+      }
+    }
+  }
+
+  // Sad hampter turning evil: pulsing red screen + warning text
+  drawTransform() {
+    const ctx = this.ctx;
+    const pulse = 0.5 + 0.5 * Math.sin(this.sceneTime * 18);
+
+    ctx.fillStyle = `rgba(200, 0, 0, ${0.12 + 0.15 * pulse})`;
     ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
 
-    // Ground
-    ctx.fillStyle = "#9BCB77";
-    ctx.fillRect(0, GROUND_Y, GAME_WIDTH, GAME_HEIGHT - GROUND_Y);
+    ctx.textAlign = "center";
+    ctx.font = "bold 44px sans-serif";
+    ctx.lineWidth = 6;
+    ctx.strokeStyle = "#000000";
+    ctx.strokeText("HAMPTER TURNED EVIL!", GAME_WIDTH / 2, 120);
+    ctx.fillStyle = "#FF3B3B";
+    ctx.fillText("HAMPTER TURNED EVIL!", GAME_WIDTH / 2, 120);
+    ctx.textAlign = "left";
+  }
 
-    // Ground outline
-    ctx.fillStyle = "#5D9445";
-    ctx.fillRect(0, GROUND_Y, GAME_WIDTH, 5);
+  // Gem launch: blue tint over the screen that fades out
+  drawGemGlow() {
+    const ctx = this.ctx;
+    const strength = this.gemGlowTime / GEM_GLOW_TIME; // 1 -> 0 as it fades
 
-    // Scrolling ground marks so you can see the world moving
-    const spacing = 80;
-    const offset = this.groundOffset % spacing;
-    for (let x = -offset; x < GAME_WIDTH; x += spacing) {
-      ctx.fillRect(x, GROUND_Y + 25, 30, 4);
-    }
+    ctx.fillStyle = `rgba(60, 140, 255, ${0.25 * strength})`;
+    ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
   }
 
   // Animation time for a button, or null if it isn't the one being pressed
@@ -396,6 +671,23 @@ export class Game {
     ctx.textAlign = "left";
   }
 
+  // Win screen: darken the level and show a message + Play / Menu buttons
+  drawWin() {
+    const ctx = this.ctx;
+
+    ctx.fillStyle = "rgba(0, 0, 0, 0.5)";
+    ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+
+    ctx.textAlign = "center";
+    ctx.fillStyle = "#FFFFFF";
+    ctx.font = "bold 56px sans-serif";
+    ctx.fillText("YOU MADE IT!", GAME_WIDTH / 2, GAME_HEIGHT / 2 - 40);
+    ctx.textAlign = "left";
+
+    this.playButton.draw(ctx, this.animTimeFor(this.playButton));
+    this.menuButton.draw(ctx, this.animTimeFor(this.menuButton));
+  }
+
   drawGameOver() {
     const ctx = this.ctx;
 
@@ -427,23 +719,70 @@ export class Game {
     ctx.textAlign = "left";
   }
 
+  // Sky and grass behind the title screen (title.png is see-through)
+  drawMenuBackground() {
+    const ctx = this.ctx;
+
+    // Sky
+    ctx.fillStyle = "#BFE8FF";
+    ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+
+    // Ground
+    ctx.fillStyle = "#9BCB77";
+    ctx.fillRect(0, GROUND_Y, GAME_WIDTH, GAME_HEIGHT - GROUND_Y);
+
+    // Ground outline
+    ctx.fillStyle = "#5D9445";
+    ctx.fillRect(0, GROUND_Y, GAME_WIDTH, 5);
+  }
+
   draw() {
-    this.drawBackground();
+    const ctx = this.ctx;
+    ctx.imageSmoothingEnabled = false; // keeps pixel art crisp
+    ctx.clearRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
 
     // While a button animation plays, keep showing the screen it came from
     const screen = this.state === "pressing" ? this.pending.from : this.state;
 
     if (screen === "menu") {
+      this.drawMenuBackground();
       this.drawMenu();
       return;
     }
 
-    this.obstacles.draw(this.ctx);
-    this.player.draw(this.ctx);
-    this.livesDisplay.draw(this.ctx, this.obstacles.lives);
+    // Boss battle has its own screen (no level, no hearts)
+    if (screen === "playing" && this.scene === "battle") {
+      this.battle.draw(ctx);
+      return;
+    }
+
+    // ---- World: everything here scrolls with the camera ----
+    ctx.save();
+    // Round so pixel art lands on whole pixels (no blurry half-pixel edges)
+    ctx.translate(-Math.round(this.scrollX), 0);
+    this.drawWorld();
+    this.obstacles.draw(ctx, this.spikeImages, this.showGroundDebug);
+    const shake = this.scene === "transform" ? 6 : 0;
+    drawObjects(ctx, this.objects, this.objectImages, this.showGroundDebug, shake);
+    this.player.draw(ctx);
+    ctx.restore();
+
+    // ---- Screen-space effects and HUD: fixed on screen ----
+    if (this.gemGlowTime > 0) this.drawGemGlow();
+    if (this.scene === "transform") this.drawTransform();
+
+    this.livesDisplay.draw(ctx, this.obstacles.lives);
+
+    if (this.showGroundDebug) {
+      ctx.fillStyle = "#000000";
+      ctx.font = "14px monospace";
+      ctx.fillText(`scrollX: ${Math.round(this.scrollX)}`, 20, GAME_HEIGHT - 20);
+    }
 
     if (screen === "gameover") {
       this.drawGameOver();
+    } else if (screen === "win") {
+      this.drawWin();
     }
   }
 
