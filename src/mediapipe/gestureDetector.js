@@ -91,6 +91,10 @@ export class GestureDetector {
     return false;
   }
 
+  detectPunch(landmarks, now){
+    const rightHand = landmarks[0];
+    const lefttHand = landmarks[0];
+  }
   update(landmarks, now) {
     if (!landmarks) {
       this.previousWristY = null;
