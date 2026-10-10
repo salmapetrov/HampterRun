@@ -1,4 +1,3 @@
-
 import {
   PLAYER_X,
   PLAYER_WIDTH,
@@ -79,20 +78,6 @@ export class Player {
     this.actionAnimationFinished = false;
     this.setAnimation("death");
   }
-
-  playHit() {
-    if (this.actionAnimation === "death") return;
-
-    this.actionAnimation = "hit";
-    this.actionAnimationFinished = false;
-    this.setAnimation("hit");
-    }
-
-    playDeath() {
-    this.actionAnimation = "death";
-    this.actionAnimationFinished = false;
-    this.setAnimation("death");
-    }
 
   jump() {
     // Prevent jumping again while in the air or during hit/death

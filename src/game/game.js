@@ -1,4 +1,3 @@
-
 import {
   GAME_WIDTH,
   GAME_HEIGHT,
@@ -33,13 +32,13 @@ const ANIM_FPS = 12;
 // A canvas button with a static image and an optional click animation
 class MenuButton {
   constructor({ label, staticFile, animDir, prefix, centerX, y, width }) {
-    this.label = label;
+    this.label = label; // fallback text if the image is missing
     this.staticFile = staticFile;
     this.animDir = animDir;
-    this.prefix = prefix;
+    this.prefix = prefix; // frames are named <prefix>0.png, <prefix>1.png, ...
 
     this.width = width;
-    this.height = 80;
+    this.height = 80; // replaced once the image loads
     this.x = centerX - width / 2;
     this.y = y;
 
@@ -61,12 +60,8 @@ class MenuButton {
 
     // Load animation frames until one is missing
     for (let i = 0; i < MAX_FRAMES; i++) {
-      const frame = await loadImage(
-        `${this.animDir}/${this.prefix}${i}.png`
-      );
-
+      const frame = await loadImage(`${this.animDir}/${this.prefix}${i}.png`);
       if (!frame) break;
-
       this.frames.push(frame);
     }
 
@@ -78,7 +73,7 @@ class MenuButton {
     }
   }
 
-  // Duration of button click animation in seconds
+  // How long the click animation lasts, in seconds
   get duration() {
     return this.frames.length / ANIM_FPS;
   }
@@ -92,8 +87,7 @@ class MenuButton {
     );
   }
 
-  // animTime = null draws static image
-  // A number plays the button animation
+  // animTime = null draws the static image, a number plays the animation
   draw(ctx, animTime = null) {
     let image = this.image;
 
@@ -102,37 +96,28 @@ class MenuButton {
         Math.floor(animTime * ANIM_FPS),
         this.frames.length - 1
       );
-
       image = this.frames[index];
     }
 
     if (image) {
-      ctx.imageSmoothingEnabled = false;
+      ctx.imageSmoothingEnabled = false; // keeps pixel art crisp
       ctx.drawImage(image, this.x, this.y, this.width, this.height);
       return;
     }
 
-    // Fallback placeholder
+    // Fallback placeholder if the image hasn't loaded
     ctx.fillStyle = "#D9A066";
     ctx.fillRect(this.x, this.y, this.width, this.height);
-
     ctx.fillStyle = "#000000";
     ctx.font = "bold 32px sans-serif";
     ctx.textAlign = "center";
-
-    ctx.fillText(
-      this.label,
-      this.x + this.width / 2,
-      this.y + this.height / 2 + 11
-    );
-
+    ctx.fillText(this.label, this.x + this.width / 2, this.y + this.height / 2 + 11);
     ctx.textAlign = "left";
   }
 }
 
-// Blue button assets
-const STATIC_SUFFIX = "B";
-
+// Blue buttons: static image + animation frames (Name0.png, Name1.png, ...)
+const STATIC_SUFFIX = "B"; // static files are named like StartB.png
 function blueButton(name, options) {
   return new MenuButton({
     label: name.toUpperCase(),
@@ -146,10 +131,8 @@ function blueButton(name, options) {
 function loadImage(src) {
   return new Promise((resolve) => {
     const img = new Image();
-
     img.onload = () => resolve(img);
     img.onerror = () => resolve(null);
-
     img.src = encodeURI(src);
   });
 }
@@ -173,19 +156,17 @@ export class Game {
 
     this.state = "menu";
 
-    // Menu buttons
+    // Buttons
     this.startButton = blueButton("Start", {
       centerX: GAME_WIDTH / 2,
       y: GAME_HEIGHT / 2,
       width: 260,
     });
-
     this.playButton = blueButton("Play", {
       centerX: GAME_WIDTH / 2 - 120,
       y: GAME_HEIGHT / 2 + 20,
       width: 200,
     });
-
     this.menuButton = blueButton("Menu", {
       centerX: GAME_WIDTH / 2 + 120,
       y: GAME_HEIGHT / 2 + 20,
@@ -193,36 +174,27 @@ export class Game {
     });
 
     // Button press animation
-    this.pending = null;
+    this.pending = null; // { button, action, from }
     this.pressTime = 0;
 
-    // Background images
     this.titleImage = null;
-
     loadImage(TITLE_IMAGE).then((img) => {
       this.titleImage = img;
-
-      if (!img) {
-        console.warn("Title image not found:", TITLE_IMAGE);
-      }
+      if (!img) console.warn("Title image not found:", TITLE_IMAGE);
     });
 
     this.gameOverImage = null;
-
     loadImage(GAME_OVER_IMAGE).then((img) => {
       this.gameOverImage = img;
-
-      if (!img) {
-        console.warn("Game over image not found:", GAME_OVER_IMAGE);
-      }
+      if (!img) console.warn("Game over image not found:", GAME_OVER_IMAGE);
     });
 
-    // Main game loop
     this.running = false;
     this.lastTime = 0;
+
     this.loop = this.loop.bind(this);
 
-    // Running state
+    // Running state (set by the webcam gesture detection in main.js)
     this.isRunning = false;
     this.keyboardRunning = false; // testing without a webcam: hold Shift
     this.runSpeed = 0; // 0 = standing still, 1 = full speed
@@ -260,12 +232,10 @@ export class Game {
     this.objectImages = {}; // gem, sad, evil
     this.battleImages = {};
 
-    // Webcam running detection
     window.addEventListener("hampter-running", (event) => {
       this.isRunning = event.detail.running;
     });
 
-    // Webcam jump detection
     window.addEventListener("hampter-action", (event) => {
       if (event.detail.action === "JUMP") this.jump();
 
@@ -276,12 +246,8 @@ export class Game {
       }
     });
 
-    // Keyboard controls
     window.addEventListener("keydown", (event) => {
-      if (
-        event.code === "ShiftLeft" ||
-        event.code === "ShiftRight"
-      ) {
+      if (event.code === "ShiftLeft" || event.code === "ShiftRight") {
         this.keyboardRunning = true;
       }
 
@@ -295,30 +261,19 @@ export class Game {
     });
 
     window.addEventListener("keyup", (event) => {
-      if (
-        event.code === "ShiftLeft" ||
-        event.code === "ShiftRight"
-      ) {
+      if (event.code === "ShiftLeft" || event.code === "ShiftRight") {
         this.keyboardRunning = false;
       }
     });
 
-    // Mouse controls
+    // Click the buttons
     this.canvas.addEventListener("click", (event) => {
+      // Convert screen click to canvas coordinates
       const rect = this.canvas.getBoundingClientRect();
+      const x = (event.clientX - rect.left) * (this.canvas.width / rect.width);
+      const y = (event.clientY - rect.top) * (this.canvas.height / rect.height);
 
-      const x =
-        (event.clientX - rect.left) *
-        (this.canvas.width / rect.width);
-
-      const y =
-        (event.clientY - rect.top) *
-        (this.canvas.height / rect.height);
-
-      if (
-        this.state === "menu" &&
-        this.startButton.contains(x, y)
-      ) {
+      if (this.state === "menu" && this.startButton.contains(x, y)) {
         this.beginStart();
       } else if (this.state === "playing" && this.scene === "battle") {
         this.battle.handleClick(x, y);
@@ -387,7 +342,7 @@ export class Game {
     this.running = false;
   }
 
-  // Play button animation before performing its action
+  // Play the button's click animation, then run its action
   press(button, action) {
     if (this.state === "pressing") return;
 
@@ -396,12 +351,7 @@ export class Game {
       return;
     }
 
-    this.pending = {
-      button,
-      action,
-      from: this.state,
-    };
-
+    this.pending = { button, action, from: this.state };
     this.pressTime = 0;
     this.state = "pressing";
   }
@@ -426,35 +376,24 @@ export class Game {
     }
   }
 
-  // Start a new game
   startGame() {
     this.resetLevel();
     this.state = "playing";
 
-    // Notify main.js to show the camera panel
+    // Let main.js know a round began (shows the camera panel)
     window.dispatchEvent(new CustomEvent("hampter-start"));
   }
 
-  // Return to the main menu
   goToMenu() {
     this.resetLevel();
     this.runSpeed = 0;
-    this.jumpMomentum = 0;
-    this.groundOffset = 0;
-
-    this.isRunning = false;
-    this.keyboardRunning = false;
-
-    this.pending = null;
-    this.pressTime = 0;
-
     this.state = "menu";
 
-    // Notify main.js to hide the camera panel
+    // Let main.js know we're back at the menu (hides the camera panel)
     window.dispatchEvent(new CustomEvent("hampter-menu"));
   }
 
-  // Space / webcam jump
+  // Space / webcam jump: starts or restarts the game, otherwise jumps
   jump() {
     if (this.state === "menu" || this.isEndScreen()) {
       this.pressMainButton();
@@ -469,22 +408,17 @@ export class Game {
 
       this.player.jump();
     }
-}
+  }
 
   update(dt) {
-    // Handle animated button presses
     if (this.state === "pressing") {
-      if (!this.pending) return;
-
       this.pressTime += dt;
 
       if (this.pressTime >= this.pending.button.duration) {
         const { action } = this.pending;
-
         this.pending = null;
         action();
       }
-
       return;
     }
 
@@ -640,27 +574,6 @@ export class Game {
         return;
       }
     }
-
-    // Update hamster animations
-    this.player.updateAnimation(dt, isRunning);
-
-    // Move the ground
-    this.groundOffset += 300 * dt * this.runSpeed;
-
-    // Move obstacles and detect collisions
-    this.obstacles.update(
-        dt * this.runSpeed,
-        this.player
-        );
-
-        if (this.obstacles.wasHit) {
-            if (this.obstacles.isGameOver) {
-                this.player.playDeath();
-                this.state = "dying";
-            } else {
-                this.player.playHit();
-            }
-        }
   }
 
   // Draws the level in world coordinates. Call inside the camera translate.
@@ -719,15 +632,11 @@ export class Game {
     ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
   }
 
-  // Return animation time for the currently pressed button
+  // Animation time for a button, or null if it isn't the one being pressed
   animTimeFor(button) {
-    if (
-      this.state === "pressing" &&
-      this.pending?.button === button
-    ) {
+    if (this.state === "pressing" && this.pending.button === button) {
       return this.pressTime;
     }
-
     return null;
   }
 
@@ -737,34 +646,22 @@ export class Game {
 
     ctx.textAlign = "center";
 
-    // Title screen background
+    // Title image (900x500, drawn over the whole canvas)
     if (this.titleImage) {
-      ctx.drawImage(
-        this.titleImage,
-        0,
-        0,
-        GAME_WIDTH,
-        GAME_HEIGHT
-      );
+      ctx.drawImage(this.titleImage, 0, 0, GAME_WIDTH, GAME_HEIGHT);
     } else {
+      // Fallback text if the image hasn't loaded
       ctx.fillStyle = "#000000";
       ctx.font = "bold 64px sans-serif";
-
-      ctx.fillText(
-        "HAMPTER RUN",
-        GAME_WIDTH / 2,
-        GAME_HEIGHT / 3
-      );
+      ctx.fillText("HAMPTER RUN", GAME_WIDTH / 2, GAME_HEIGHT / 3);
     }
 
-    // Start button
     b.draw(ctx, this.animTimeFor(b));
 
-    // Hint text
+    // Hint
     ctx.fillStyle = "#000000";
     ctx.font = "20px sans-serif";
     ctx.textAlign = "center";
-
     ctx.fillText(
       "Click START or press SPACE / ENTER",
       GAME_WIDTH / 2,
@@ -795,51 +692,30 @@ export class Game {
     const ctx = this.ctx;
 
     if (this.gameOverImage) {
-      ctx.drawImage(
-        this.gameOverImage,
-        0,
-        0,
-        GAME_WIDTH,
-        GAME_HEIGHT
-      );
+      // Game over screen (900x500, drawn over the whole canvas)
+      ctx.drawImage(this.gameOverImage, 0, 0, GAME_WIDTH, GAME_HEIGHT);
     } else {
+      // Fallback text if the image hasn't loaded
       ctx.textAlign = "center";
       ctx.fillStyle = "#000000";
       ctx.font = "bold 56px sans-serif";
-
-      ctx.fillText(
-        "GAME OVER",
-        GAME_WIDTH / 2,
-        GAME_HEIGHT / 2 - 20
-      );
+      ctx.fillText("GAME OVER", GAME_WIDTH / 2, GAME_HEIGHT / 2 - 20);
     }
 
-    // Game-over buttons
-    this.playButton.draw(
-      ctx,
-      this.animTimeFor(this.playButton)
-    );
+    this.playButton.draw(ctx, this.animTimeFor(this.playButton));
+    this.menuButton.draw(ctx, this.animTimeFor(this.menuButton));
 
-    this.menuButton.draw(
-      ctx,
-      this.animTimeFor(this.menuButton)
-    );
-
-    // Fallback hint
+    // Hint text only when the game over image isn't being used
     if (!this.gameOverImage) {
       ctx.fillStyle = "#000000";
       ctx.font = "22px sans-serif";
       ctx.textAlign = "center";
-
       ctx.fillText(
         "Press SPACE to play again",
         GAME_WIDTH / 2,
-        this.playButton.y +
-          this.playButton.height +
-          40
+        this.playButton.y + this.playButton.height + 40
       );
     }
-
     ctx.textAlign = "left";
   }
 
@@ -865,11 +741,8 @@ export class Game {
     ctx.imageSmoothingEnabled = false; // keeps pixel art crisp
     ctx.clearRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
 
-    // During button animation, show the previous screen
-    const screen =
-      this.state === "pressing"
-        ? this.pending?.from
-        : this.state;
+    // While a button animation plays, keep showing the screen it came from
+    const screen = this.state === "pressing" ? this.pending.from : this.state;
 
     if (screen === "menu") {
       this.drawMenuBackground();
@@ -906,13 +779,6 @@ export class Game {
       ctx.fillText(`scrollX: ${Math.round(this.scrollX)}`, 20, GAME_HEIGHT - 20);
     }
 
-    // Lives HUD
-    this.livesDisplay.draw(
-      this.ctx,
-      this.obstacles.lives
-    );
-
-    // Game-over overlay
     if (screen === "gameover") {
       this.drawGameOver();
     } else if (screen === "win") {
