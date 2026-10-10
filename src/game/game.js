@@ -11,7 +11,7 @@ import { LivesDisplay } from "./hud.js";
 // ---- Button assets (files in /public are served from the site root) ----
 const BUTTON_DIR = "/assets/menu/Buttons";
 const TITLE_IMAGE = "/assets/backgrounds/title.png";
-const GAME_OVER_IMAGE = "/assets/backgrounds/gameover.png";
+const GAME_OVER_IMAGE = "/assets/backgrounds/gameOver.png";
 const INSTRUCTIONS_IMAGE = "/assets/backgrounds/instructions.png";
 
 // Home icon (bottom right on the instructions and gameplay screens)
