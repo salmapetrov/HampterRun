@@ -5,7 +5,7 @@ import {
 
 import { Game } from "./game/game.js";
 
-import { GestureDetector } from "./gestureDetector.js";
+import { GestureDetector } from "./mediapipe/gestureDetector.js";
 
 const gestures = new GestureDetector();
 const video = document.querySelector("#webcam");

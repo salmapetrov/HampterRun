@@ -1,3 +1,4 @@
+
 import { Obstacle } from "./obstacles.js";
 import { platforms, platformY } from "./world.js";
 import { WORLD_WIDTH } from "./constants.js";
@@ -63,6 +64,7 @@ export class ObstacleManager {
 
     this.obstacles = this.obstacles.filter((o) => o.x + o.width >= scrollX);
 
+    // Update obstacles and detect collisions
     for (const obstacle of this.obstacles) {
       obstacle.update(dt);
 
