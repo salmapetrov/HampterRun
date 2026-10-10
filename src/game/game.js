@@ -57,6 +57,32 @@ export class Game {
 
     this.loop = this.loop.bind(this);
 
+    // Running state (set by the webcam gesture detection in main.js)
+    this.isRunning = false;
+    this.keyboardRunning = false; // testing without a webcam: hold Shift
+    this.runSpeed = 0; // 0 = standing still, 1 = full speed
+    this.groundOffset = 0;
+
+    window.addEventListener("hampter-running", (event) => {
+      this.isRunning = event.detail.running;
+    });
+
+    window.addEventListener("hampter-action", (event) => {
+      if (event.detail.action === "JUMP") this.jump();
+    });
+
+    window.addEventListener("keydown", (event) => {
+      if (event.code === "ShiftLeft" || event.code === "ShiftRight") {
+        this.keyboardRunning = true;
+      }
+    });
+
+    window.addEventListener("keyup", (event) => {
+      if (event.code === "ShiftLeft" || event.code === "ShiftRight") {
+        this.keyboardRunning = false;
+      }
+    });
+
     // Click the START button
     this.canvas.addEventListener("click", (event) => {
       if (this.state !== "menu") return;
@@ -171,8 +197,15 @@ export class Game {
 
     if (this.state !== "playing") return;
 
+    // Ease toward full speed when the user runs, and toward 0 when they stop
+    const target = this.isRunning || this.keyboardRunning ? 1 : 0;
+    this.runSpeed += (target - this.runSpeed) * Math.min(1, dt * 8);
+
+    // Obstacles and ground only move while the user is running
+    this.groundOffset += 300 * dt * this.runSpeed;
+
     this.player.update(dt);
-    this.obstacles.update(dt, this.player);
+    this.obstacles.update(dt * this.runSpeed, this.player);
 
     if (this.obstacles.isGameOver) {
       this.state = "gameover";
@@ -195,6 +228,13 @@ export class Game {
     // Ground outline
     ctx.fillStyle = "#5D9445";
     ctx.fillRect(0, GROUND_Y, GAME_WIDTH, 5);
+
+    // Scrolling ground marks so you can see the world moving
+    const spacing = 80;
+    const offset = this.groundOffset % spacing;
+    for (let x = -offset; x < GAME_WIDTH; x += spacing) {
+      ctx.fillRect(x, GROUND_Y + 25, 30, 4);
+    }
   }
 
   drawMenu() {
