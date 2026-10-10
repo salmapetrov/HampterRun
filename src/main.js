@@ -2,12 +2,26 @@
 import {
   createPoseTracker,
   drawPose
-} from "./poseTracker.js";
+} from "./mediapipe/poseTracker.js";
+
+import { Game } from "./game/game.js";
 
 const video = document.querySelector("#webcam");
 const canvas = document.querySelector("#overlay");
 const status = document.querySelector("#status");
 const start = document.querySelector("#start");
+
+const gameCanvas = document.querySelector("#gameCanvas");
+const game = new Game(gameCanvas);
+
+game.start();
+
+window.addEventListener("keydown", (event) => {
+  if (event.code === "Space") {
+    event.preventDefault();
+    game.jump();
+  }
+});
 
 let tracker;
 let lastVideoTime = -1;
