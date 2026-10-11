@@ -151,6 +151,9 @@ export class Battle {
     this.jumpSound = new Audio("/assets/sounds/jump.wav");
     this.jumpSound.volume = 0.5;
 
+    this.gunshotSound = new Audio("/assets/sounds/Laser_Gun.wav");
+    this.gunshotSound.volume = 0.5;
+
     this.evilWhite = images.evil
       ? whiteSilhouette(images.evil, EVIL_W, EVIL_H)
       : null;
@@ -372,6 +375,9 @@ export class Battle {
   }
 
   fireBullet() {
+    this.gunshotSound.currentTime = 0;
+    this.gunshotSound.play().catch(() => {});
+
     const targetX =
       this.hamsterX + 20 * HAMSTER_SCALE;
 
