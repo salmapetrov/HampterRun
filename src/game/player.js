@@ -45,6 +45,9 @@ export class Player {
     this.frameWidth = 48;
     this.frameHeight = 48;
 
+    this.jumpSound = new Audio("/assets/sounds/jump.wav");
+    this.jumpSound.volume = 0.5;
+
     // Sprite appearance (independent of collision box)
     this.drawWidth = 120;
     this.drawHeight = 120;
@@ -89,6 +92,10 @@ export class Player {
 
     // Start jump animation immediately
     this.setAnimation("jump");
+
+    // Jump sound effect
+    this.jumpSound.currentTime = 0;
+    this.jumpSound.play().catch(() => {});
   }
 
   // Blue gem: bounce straight up like a spring, high enough to reach the
