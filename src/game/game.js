@@ -962,11 +962,9 @@ export class Game {
   drawInstructions() {
     const ctx = this.ctx;
 
-    if (this.instructionsImage) {
-      // Instructions screen (900x500, drawn over the whole canvas)
-      ctx.drawImage(this.instructionsImage, 0, 0, GAME_WIDTH, GAME_HEIGHT);
-      return;
-    }
+    // The image itself is the #instructions <img> in index.html, shown by
+    // main.js on top of the canvas so its text isn't pixelated
+    if (this.instructionsImage) return;
 
     // Fallback text if the image hasn't loaded
     ctx.textAlign = "center";

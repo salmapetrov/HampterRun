@@ -98,6 +98,17 @@ function followHampter() {
   }
 
   requestAnimationFrame(followHampter);
+
+// How to play screen: a regular <img> over the canvas, so it renders at the
+// screen's full resolution instead of the canvas's pixelated 900x500
+const instructions = document.querySelector("#instructions");
+
+function syncInstructions() {
+  instructions.hidden = game.state !== "instructions";
+  requestAnimationFrame(syncInstructions);
+}
+
+requestAnimationFrame(syncInstructions);
 }
 
 requestAnimationFrame(followHampter);
