@@ -9,18 +9,22 @@
 <body>
   <canvas id="gameCanvas" width="900" height="500" aria-label="Hampter Vision game"></canvas>
   <aside class="camera-panel" aria-label="Webcam and body detection">
-    <div class="camera-controls">
-      <h1>Hampter Vision</h1>
-      <button id="start">Enable Camera</button>
-    </div>
-    <button id="stop">Disable Camera</button>
-  <p id="status" role="status">Camera off</p>
+
     <div class="camera">
       <video id="webcam" autoplay muted playsinline></video>
       <canvas id="overlay"></canvas>
     </div>
-  
-  <h2 id="action">Waiting for player...</h2>
+
+    <div class="camera-controls">
+      <button id="start">Enable Camera</button>
+      <button id="stop">Disable Camera</button>
+    </div>
+
+    <p id="status" role="status">Camera off</p>
+
+    <!-- Keep this for JavaScript compatibility, but hide it visually -->
+    <h2 id="action">Waiting for player...</h2>
+
   </aside>
   <script type="module" src="/src/main.js"></script>
 
