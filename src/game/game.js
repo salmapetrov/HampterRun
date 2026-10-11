@@ -28,7 +28,7 @@ const CLICK_SOUND = "/assets/sounds/ui/Buttons/boop_up_01.wav";
 // ---- Game event sounds ----
 const GAMEOVER_SOUND = "/assets/sounds/gameover.mp3"; // the game over screen appears
 const ENEMY_SOUND = "/assets/sounds/enemydetected.mp3"; // touching a sad hampter
-const WIN_SOUND = "/assets/sounds/Success 1 (subtle).wav";
+const WIN_SOUND = "/assets/sounds/win.mp3";
 const GEM_SOUND = "/assets/sounds/powerup.wav"; // picking up a gem / boost
 const HIT_SOUND = "/assets/sounds/collide.wav"; // hitting a spike
 
