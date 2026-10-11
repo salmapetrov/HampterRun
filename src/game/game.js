@@ -285,6 +285,15 @@ export class Game {
       if (event.detail.action === "SLASH" && this.scene === "battle" && this.battle) {
         this.battle.choose("slash");
       }
+      if (
+        event.detail.action === "DODGE" &&
+        this.scene === "battle" &&
+        this.battle
+      ) {
+        this.battle.dodge();
+      }
+
+      
     });
 
     window.addEventListener("keydown", (event) => {
