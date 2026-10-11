@@ -26,7 +26,7 @@ const HOVER_SOUND = "/assets/sounds/ui/Buttons/hover_soft_01.wav";
 const CLICK_SOUND = "/assets/sounds/ui/Buttons/boop_up_01.wav";
 
 // ---- Game event sounds ----
-const LOSE_SOUND = "/assets/sounds/make_more_sound-8-bit-video-game-lose-sound-version-1-145828.mp3";
+const GAMEOVER_SOUND = "/assets/sounds/gameover.mp3"; // the game over screen appears
 const ENEMY_SOUND = "/assets/sounds/enemydetected.mp3"; // touching a sad hampter
 const WIN_SOUND = "/assets/sounds/Success 1 (subtle).wav";
 const GEM_SOUND = "/assets/sounds/powerup.wav"; // picking up a gem / boost
@@ -40,6 +40,7 @@ const audioState = { muted: false };
 // once, then every play is a fresh copy, so quick repeats overlap.
 const SFX_GAIN = 1.8; // 1 = original loudness, higher = louder (too high can distort)
 const ENEMY_GAIN = 0.7; // the "enemy detected" sound is quieter than the rest (lower = quieter)
+const GAMEOVER_GAIN = 1; // the game over sound (lower = quieter)
 let sfxContext = null;
 const sfxBuffers = {}; // src -> decoded audio (or a promise while it loads)
 
@@ -105,6 +106,7 @@ const REVEAL_TIME = 0.6; // seconds for the black blocks to clear off the battle
 const BUTTON_DIR = "/assets/menu/Buttons";
 const TITLE_IMAGE = "/assets/backgrounds/title.png";
 const GAME_OVER_IMAGE = "/assets/backgrounds/gameOver.png";
+const VICTORY_IMAGE = "/assets/backgrounds/hamptervictory.png";
 const INSTRUCTIONS_IMAGE = "/assets/backgrounds/instructions.png";
 const MENU_BACKGROUND_IMAGE = "/assets/backgrounds/background4.png";
 
@@ -133,6 +135,12 @@ const ANIM_FPS = 12;
 
 // Buttons shrink to this fraction of their size while the mouse is over them
 const HOVER_SCALE = 0.94;
+
+// Win screen: Play sits left of the text in the victory box, Menu sits right of it.
+// Tweak these (in canvas pixels, the canvas is 900x500) to nudge the buttons.
+const WIN_BUTTON_WIDTH = 140;
+const WIN_BUTTON_OFFSET = 205; // distance of each button's center from the screen center
+const WIN_BUTTONS_CENTER_Y = 313; // vertical middle of the buttons
 
 // Where the mouse is on the canvas (in canvas pixels), updated by the Game
 const pointer = { x: 0, y: 0, inside: false };
@@ -205,6 +213,15 @@ class MenuButton {
     } else {
       this.bottom = undefined;
       this.y = top;
+    }
+  }
+
+  // Changes the width and keeps the image's proportions (call moveTo afterwards)
+  resize(width) {
+    this.width = width;
+
+    if (this.image) {
+      this.height = width * (this.image.naturalHeight / this.image.naturalWidth);
     }
   }
 
@@ -358,6 +375,12 @@ export class Game {
       if (!img) console.warn("Game over image not found:", GAME_OVER_IMAGE);
     });
 
+    this.victoryImage = null;
+    loadImage(VICTORY_IMAGE).then((img) => {
+      this.victoryImage = img;
+      if (!img) console.warn("Victory image not found:", VICTORY_IMAGE);
+    });
+
     this.instructionsImage = null;
     this.instructionsShownAt = 0;
     loadImage(INSTRUCTIONS_IMAGE).then((img) => {
@@ -377,7 +400,7 @@ export class Game {
     for (const src of [
       HOVER_SOUND,
       CLICK_SOUND,
-      LOSE_SOUND,
+      GAMEOVER_SOUND,
       ENEMY_SOUND,
       WIN_SOUND,
       GEM_SOUND,
@@ -444,6 +467,8 @@ export class Game {
     this.sceneTime = 0;
     this.battle = null;
     this.battleEnemy = null; // the map object we're fighting
+    this.battleResult = null; // "won" / "lost", kept while the screen wipes to black
+    this.exitRevealLeft = 0; // seconds of black blocks still clearing off after a battle
 
     // Pixel wipe between the level and the battle
     this.wipeTime = 0;
@@ -542,7 +567,8 @@ export class Game {
       const homeVisible =
         (this.state === "instructions" || this.state === "playing") &&
         this.scene !== "battle" &&
-        this.scene !== "reveal";
+        this.scene !== "reveal" &&
+        this.scene !== "exitWipe";
 
       if (homeVisible && this.homeButton.contains(x, y)) {
         this.press(this.homeButton, () => this.goToMenu());
@@ -581,6 +607,32 @@ export class Game {
     }
   }
 
+  // Places the Play / Menu buttons for the end screens. On the win screen they sit
+  // on the left and right of the text in the victory box; on game over they sit
+  // side by side in the middle.
+  layoutEndButtons(isWin) {
+    const buttons = [this.playButton, this.menuButton];
+
+    if (isWin) {
+      for (const b of buttons) b.resize(WIN_BUTTON_WIDTH);
+
+      this.playButton.moveTo({
+        centerX: GAME_WIDTH / 2 - WIN_BUTTON_OFFSET,
+        top: WIN_BUTTONS_CENTER_Y - this.playButton.height / 2,
+      });
+      this.menuButton.moveTo({
+        centerX: GAME_WIDTH / 2 + WIN_BUTTON_OFFSET,
+        top: WIN_BUTTONS_CENTER_Y - this.menuButton.height / 2,
+      });
+      return;
+    }
+
+    for (const b of buttons) b.resize(200);
+
+    this.playButton.moveTo({ centerX: GAME_WIDTH / 2 - 120, top: GAME_HEIGHT / 2 + 20 });
+    this.menuButton.moveTo({ centerX: GAME_WIDTH / 2 + 120, top: GAME_HEIGHT / 2 + 20 });
+  }
+
   // Whichever sound icon matches the current state
   currentSoundButton() {
     return audioState.muted ? this.mutedButton : this.soundOnButton;
@@ -607,7 +659,8 @@ export class Game {
     if (
       this.state === "playing" &&
       this.scene !== "battle" &&
-      this.scene !== "reveal"
+      this.scene !== "reveal" &&
+      this.scene !== "exitWipe"
     ) {
       return [this.homeButton, this.currentSoundButton()];
     }
@@ -732,6 +785,8 @@ export class Game {
     this.scene = "run";
     this.battle = null;
     this.battleEnemy = null;
+    this.battleResult = null;
+    this.exitRevealLeft = 0;
     this.player.reset();
     this.obstacles.reset();
     this.stopBattleMusic();
@@ -835,7 +890,7 @@ export class Game {
     }
 
     // No jumping while a hampter turns evil or during the battle
-    if (this.state === "playing" && this.scene === "run") {
+    if (this.state === "playing" && this.scene === "run" && this.exitRevealLeft <= 0) {
       // Remember take-off speed so the hamster keeps moving forward mid-air,
       // even if the webcam stops seeing "running" while you jump (Thaira's idea)
       if (this.player.isGrounded) this.jumpMomentum = this.runSpeed;
@@ -845,6 +900,11 @@ export class Game {
   }
 
   update(dt) {
+    // Black blocks clearing off the level after a battle
+    if (this.exitRevealLeft > 0) {
+      this.exitRevealLeft = Math.max(0, this.exitRevealLeft - dt);
+    }
+
     if (this.state === "pressing") {
       this.pressTime += dt;
 
@@ -863,6 +923,8 @@ export class Game {
 
       if (this.player.actionAnimationFinished) {
         this.state = "gameover";
+        this.layoutEndButtons(false);
+        playSound(GAMEOVER_SOUND, GAMEOVER_GAIN);
 
         // Let main.js know the round ended (hides the camera panel)
         window.dispatchEvent(new CustomEvent("hampter-gameover"));
@@ -885,9 +947,19 @@ export class Game {
       this.updateReveal(dt);
       return;
     }
+    if (this.scene === "exitWipe") {
+      this.updateExitWipe(dt);
+      return;
+    }
     if (this.scene === "battle") {
       this.battle.update(dt);
-      if (this.battle.result) this.endBattle(this.battle.result);
+      if (this.battle.result) this.beginExitWipe(this.battle.result);
+      return;
+    }
+
+    // The level stays frozen while the black blocks clear off after a battle
+    if (this.exitRevealLeft > 0) {
+      this.player.updateAnimation(dt, false);
       return;
     }
 
@@ -909,7 +981,6 @@ export class Game {
 
       if (this.obstacles.isGameOver) {
         this.player.playDeath();
-        playSound(LOSE_SOUND);
         this.state = "dying";
         this.stopGameMusic();
       } else {
@@ -920,6 +991,7 @@ export class Game {
     // Made it to the end of the last background copy: show the win screen
     if (this.state === "playing" && this.distance >= this.maxDistance()) {
       this.state = "win";
+      this.layoutEndButtons(true);
       playSound(WIN_SOUND);
       this.stopGameMusic();
 
@@ -1005,6 +1077,40 @@ export class Game {
     }
   }
 
+  // The battle just ended: black blocks fill the screen over the battle scene
+  beginExitWipe(result) {
+    this.battleResult = result;
+    this.scene = "exitWipe";
+    this.wipeTime = 0;
+    this.wipeCells = this.makeWipeCells();
+  }
+
+  // When the screen is fully black, switch back to the level (endBattle) and
+  // let the black blocks clear off it
+  updateExitWipe(dt) {
+    this.wipeTime += dt;
+
+    if (this.wipeTime >= WIPE_TIME) {
+      const result = this.battleResult;
+      this.battleResult = null;
+
+      this.endBattle(result);
+      this.exitRevealLeft = REVEAL_TIME;
+    }
+  }
+
+  // Same blocks as the wipe, cleared in reverse over the level
+  drawExitReveal() {
+    const ctx = this.ctx;
+    const remaining = this.exitRevealLeft / REVEAL_TIME;
+
+    ctx.fillStyle = "#000000";
+
+    for (const cell of this.wipeCells) {
+      if (cell.t <= remaining) ctx.fillRect(cell.x, cell.y, WIPE_BLOCK, WIPE_BLOCK);
+    }
+  }
+
   // Battle over. Won: the evil hampter is gone. Lost: lose a heart (game over
   // if it was the last one). Either way, back to running.
   endBattle(result) {
@@ -1018,7 +1124,6 @@ export class Game {
       this.obstacles.lives = Math.max(0, this.obstacles.lives - 1);
       if (this.obstacles.isGameOver) {
         this.player.playDeath();
-        playSound(LOSE_SOUND);
         this.state = "dying";
         this.stopGameMusic();
       } else {
@@ -1218,18 +1323,24 @@ export class Game {
     ctx.textAlign = "left";
   }
 
-  // Win screen: darken the level and show a message + Play / Menu buttons
+  // Win screen: the victory image + Play / Menu buttons
   drawWin() {
     const ctx = this.ctx;
 
-    ctx.fillStyle = "rgba(0, 0, 0, 0.5)";
-    ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+    if (this.victoryImage) {
+      // Victory screen (900x500, drawn over the whole canvas)
+      ctx.drawImage(this.victoryImage, 0, 0, GAME_WIDTH, GAME_HEIGHT);
+    } else {
+      // Fallback if the image hasn't loaded: darken the level and show text
+      ctx.fillStyle = "rgba(0, 0, 0, 0.5)";
+      ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
 
-    ctx.textAlign = "center";
-    ctx.fillStyle = "#FFFFFF";
-    ctx.font = "bold 56px sans-serif";
-    ctx.fillText("YOU MADE IT!", GAME_WIDTH / 2, GAME_HEIGHT / 2 - 40);
-    ctx.textAlign = "left";
+      ctx.textAlign = "center";
+      ctx.fillStyle = "#FFFFFF";
+      ctx.font = "bold 56px sans-serif";
+      ctx.fillText("YOU MADE IT!", GAME_WIDTH / 2, GAME_HEIGHT / 2 - 40);
+      ctx.textAlign = "left";
+    }
 
     this.playButton.draw(ctx, this.animTimeFor(this.playButton));
     this.menuButton.draw(ctx, this.animTimeFor(this.menuButton));
@@ -1310,9 +1421,13 @@ export class Game {
     }
 
     // Boss battle has its own screen (no level, no hearts)
-    if (screen === "playing" && (this.scene === "battle" || this.scene === "reveal")) {
+    if (
+      screen === "playing" &&
+      (this.scene === "battle" || this.scene === "reveal" || this.scene === "exitWipe")
+    ) {
       this.battle.draw(ctx);
       if (this.scene === "reveal") this.drawReveal();
+      if (this.scene === "exitWipe") this.drawWipe();
       return;
     }
 
@@ -1347,6 +1462,9 @@ export class Game {
       ctx.font = "14px monospace";
       ctx.fillText(`scrollX: ${Math.round(this.scrollX)}`, 20, GAME_HEIGHT - 20);
     }
+
+    // Black blocks clearing off the level after a battle
+    if (this.exitRevealLeft > 0) this.drawExitReveal();
 
     // Black pixel wipe goes on top of everything in the level
     if (screen === "playing" && this.scene === "wipe") this.drawWipe();

@@ -146,7 +146,7 @@ export class Battle {
     this.images = images;
 
     this.attackSound = new Audio("/assets/sounds/attack.wav");
-    this.attackSound.volume = 0.5;
+    this.attackSound.volume = 0.8;
 
     this.jumpSound = new Audio("/assets/sounds/jump.wav");
     this.jumpSound.volume = 0.5;
@@ -156,6 +156,14 @@ export class Battle {
 
     this.damageSound = new Audio("/assets/sounds/collide.wav");
     this.damageSound.volume = 0.7;
+
+    // Plays when "K.O.!" appears after the evil hampter runs out of health
+    this.victorySound = new Audio("/assets/sounds/victory.mp3");
+    this.victorySound.volume = 0.4; // 0 to 1, lower = quieter
+
+    // Plays when "K.O.!" appears after our hampter runs out of health
+    this.loseSound = new Audio("/assets/sounds/lose.mp3");
+    this.loseSound.volume = 0.5; // 0 to 1, lower = quieter
 
     this.evilWhite = images.evil
       ? whiteSilhouette(images.evil, EVIL_W, EVIL_H)
@@ -373,6 +381,8 @@ export class Battle {
       if (this.playerHp <= 0) {
         this.anim.play("death");
         this.setPhase("lost");
+        this.loseSound.currentTime = 0;
+        this.loseSound.play().catch(() => {});
       } else if (this.phaseTime >= nextShotAt + 0.3) {
         this.startPlayerTurn();
       }
@@ -455,7 +465,10 @@ export class Battle {
       this.anim.play("idle");
 
       if (this.evilHp <= 0) {
+        // "K.O.!" shows up now, so the victory sound plays now too
         this.setPhase("won");
+        this.victorySound.currentTime = 0;
+        this.victorySound.play().catch(() => {});
       } else {
         this.startEnemyTurn();
       }
