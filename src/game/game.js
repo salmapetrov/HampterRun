@@ -19,6 +19,7 @@ import { Battle, BATTLE_IMAGES } from "./battle.js";
 // ---- Music (files in /public are served from the site root) ----
 const BATTLE_MUSIC = "/assets/sounds/Jeremy Blake - Powerup!.mp3";
 const MENU_MUSIC = "/assets/sounds/AdhesiveWombat - Night Shade.mp3";
+const GAME_MUSIC = "/assets/sounds/8 Bit Epic GameBoy! Fantasy Adventure Chiptune Game Music by HeatleyBros.mp3";
 
 // Seconds the screen glows blue after touching a gem (just a visual effect)
 const GEM_GLOW_TIME = 1;
@@ -236,12 +237,17 @@ export class Game {
     // Battle music: loops while a battle is happening
     this.battleMusic = new Audio(encodeURI(BATTLE_MUSIC));
     this.battleMusic.loop = true;
-    this.battleMusic.volume = 0.5; // 0 to 1
+    this.battleMusic.volume = 0.4; // 0 to 1
 
     // Menu music: plays on the menu and instructions screens, stops when the game starts
     this.menuMusic = new Audio(encodeURI(MENU_MUSIC));
     this.menuMusic.loop = true;
     this.menuMusic.volume = 0.3; // 0 to 1
+
+    // Game music: plays while running the level, pauses during battles
+    this.gameMusic = new Audio(encodeURI(GAME_MUSIC));
+    this.gameMusic.loop = true;
+    this.gameMusic.volume = 0.1; // 0 to 1
 
     // Browsers block sound until the player clicks or presses a key, so try now
     // and again on the first click or key press while on the menu or instructions
@@ -421,6 +427,19 @@ export class Game {
     this.menuMusic.currentTime = 0;
   }
 
+  // Starts or resumes the game music (does nothing if it's already playing)
+  startGameMusic() {
+    if (!this.gameMusic || !this.gameMusic.paused) return;
+    this.gameMusic.play().catch(() => {});
+  }
+
+  // Stops it and rewinds to the start
+  stopGameMusic() {
+    if (!this.gameMusic) return;
+    this.gameMusic.pause();
+    this.gameMusic.currentTime = 0;
+  }
+
   // Put the level back to the start: camera, hamster, spikes, gems, glow
   resetLevel() {
     this.distance = 0;
@@ -435,6 +454,7 @@ export class Game {
     this.player.reset();
     this.obstacles.reset();
     this.stopBattleMusic();
+    this.stopGameMusic();
   }
 
   // Starts the render loop (shows the menu first)
@@ -504,6 +524,7 @@ export class Game {
     this.stopMenuMusic();
     this.resetLevel();
     this.state = "playing";
+    this.startGameMusic();
 
     // Let main.js know a round began (shows the camera panel)
     window.dispatchEvent(new CustomEvent("hampter-start"));
@@ -588,6 +609,7 @@ export class Game {
       if (this.obstacles.isGameOver) {
         this.player.playDeath();
         this.state = "dying";
+        this.stopGameMusic();
       } else {
         this.player.playHit();
       }
@@ -596,6 +618,7 @@ export class Game {
     // Made it to the end of the last background copy: show the win screen
     if (this.state === "playing" && this.distance >= this.maxDistance()) {
       this.state = "win";
+      this.stopGameMusic();
 
       // Same as game over for main.js (hides the camera panel)
       window.dispatchEvent(new CustomEvent("hampter-gameover"));
@@ -610,6 +633,7 @@ export class Game {
     if (this.sceneTime >= TRANSFORM_TIME) {
       this.scene = "battle";
       this.battle = new Battle(this.battleImages);
+      this.gameMusic.pause(); // game music resumes after the battle
       this.startBattleMusic();
     }
   }
@@ -628,10 +652,14 @@ export class Game {
       if (this.obstacles.isGameOver) {
         this.player.playDeath();
         this.state = "dying";
+        this.stopGameMusic();
       } else {
         this.player.playHit();
       }
     }
+
+    // Back to the level: pick the game music up where it left off
+    if (this.state === "playing") this.startGameMusic();
   }
 
   // The level is MAX_LAPS copies of the background. The hamster stops when
