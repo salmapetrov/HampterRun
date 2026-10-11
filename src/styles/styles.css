@@ -1,3 +1,5 @@
+@import url("https://fonts.googleapis.com/css2?family=Fredoka:wght@600&display=swap");
+
 * {
   box-sizing: border-box;
 }
@@ -31,7 +33,7 @@ body {
   right: 16px;
   z-index: 10;
 
-  width: 200px;
+  max-width: 250px;
   padding: 0;
   background: transparent;
   border: none;
@@ -51,10 +53,11 @@ h1 {
   font-size: 16px;
 }
 
-#start {
+#toggleCamera {
   flex-shrink: 0;
   padding: 7px 10px;
   cursor: pointer;
+  width: 100%;
 }
 
 #status,
@@ -152,4 +155,45 @@ h1 {
 #instructions[hidden],
 #credits[hidden] {
   display: none;
+}
+
+
+#toggleCamera {
+  width: 100%;
+  padding: 12px 14px;  /* was 8px 10px: taller and roomier */
+  cursor: pointer;
+
+  font-family: "Fredoka", "Trebuchet MS", sans-serif;
+  font-size: 18px;     /* was 14px */
+  font-weight: 600;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: #ffffff;
+  text-shadow: 0 2px 0 #600303;
+
+  background: linear-gradient(#d20909 0%, #b50404 55%, #950101 100%);
+  border: 3px solid #a21111;
+  border-radius: 12px;
+  box-shadow:
+    inset 0 3px 0 rgba(255, 255, 255, 0.55), /* shiny top edge */
+    0 4px 0 #630707;                         /* chunky bottom edge */
+
+  transition: transform 0.08s ease;
+}
+
+#toggleCamera:hover {
+  transform: scale(0.96); /* shrinks like the canvas buttons */
+}
+
+#toggleCamera:active {
+  transform: translateY(3px) scale(0.96);
+  box-shadow:
+    inset 0 3px 0 rgba(255, 255, 255, 0.55),
+    0 1px 0 #14518f;
+}
+
+#toggleCamera:disabled {
+  filter: grayscale(0.4);
+  opacity: 0.8;
+  cursor: wait;
 }

@@ -12,9 +12,7 @@ const gestures = new GestureDetector();
 
 const video = document.querySelector("#webcam");
 const canvas = document.querySelector("#overlay");
-const status = document.querySelector("#status");
-const start = document.querySelector("#start");
-const stop = document.querySelector("#stop");
+const toggle = document.querySelector("#toggleCamera");
 const cameraBox = document.querySelector(".camera");
 const cameraPanel = document.querySelector(".camera-panel");
 
@@ -85,6 +83,15 @@ const BATTLE_CAM_GAP = 14; // game pixels between the webcam and the head
 let followingHampter = false;
 
 function followHampter() {
+  // Hide the webcam during the black pixel transitions, show it again once the next scene is in
+  const transitioning =
+    game.state === "playing" &&
+    (game.scene === "wipe" ||
+      game.scene === "reveal" ||
+      game.scene === "exitWipe" ||
+      game.exitRevealLeft > 0);
+  cameraPanel.style.visibility = transitioning ? "hidden" : "";
+
   const follow =
     cameraRunning &&
     game.state === "playing" &&
@@ -160,13 +167,12 @@ function detectBodyPosition(landmarks) {
   };
 }
 
-// START WEBCAM
-start.addEventListener("click", async () => {
-  start.disabled = true;
-  status.textContent = "Loading pose model...";
+// TURN THE WEBCAM ON
+async function enableCamera() {
+  toggle.disabled = true;
 
   try {
-    tracker = await createPoseTracker();
+    if (!tracker) tracker = await createPoseTracker();
 
     const stream =
       await navigator.mediaDevices.getUserMedia({
@@ -184,19 +190,19 @@ start.addEventListener("click", async () => {
 
     lastVideoTime = -1;
     cameraRunning = true;
+    toggle.textContent = "Disable Camera";
 
-    status.textContent = "Tracking!";
 
     requestAnimationFrame(trackFrame);
 
   } catch (error) {
-    status.textContent = `Error: ${error.message}`;
-    start.disabled = false;
+  } finally {
+    toggle.disabled = false;
   }
-});
+}
 
-// STOP WEBCAM
-stop.addEventListener("click", () => {
+// TURN THE WEBCAM OFF
+function disableCamera() {
   cameraRunning = false;
 
   const stream = video.srcObject;
@@ -219,10 +225,15 @@ stop.addEventListener("click", () => {
     })
   );
 
-  status.textContent = "Camera off";
+  toggle.textContent = "Enable Camera";
 
   cameraBox.style.display = "none";
-  start.disabled = false;
+}
+
+// ONE BUTTON: click to turn the camera on, click again to turn it off
+toggle.addEventListener("click", () => {
+  if (cameraRunning) disableCamera();
+  else enableCamera();
 });
 
 // MEDIAPIPE TRACKING LOOP
@@ -256,8 +267,6 @@ function trackFrame() {
 
       const punches = punchDetector.update(landmarks);
 
-      status.textContent =
-        `LEFT: ${punches.leftPunch} | RIGHT: ${punches.rightPunch}`;
 
       // Either arm triggers SLASH
       if (punches.leftPunch || punches.rightPunch) {
@@ -324,7 +333,6 @@ function trackFrame() {
       }
 
     } else {
-      status.textContent = "Waiting for gameplay...";
     }
   }
 

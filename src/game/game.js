@@ -39,7 +39,7 @@ const audioState = { muted: false };
 // normal audio element allows (its volume tops out at 1). Each sound is loaded
 // once, then every play is a fresh copy, so quick repeats overlap.
 const SFX_GAIN = 1.8; // 1 = original loudness, higher = louder (too high can distort)
-const ENEMY_GAIN = 0.7; // the "enemy detected" sound is quieter than the rest (lower = quieter)
+const ENEMY_GAIN = 0.5; // the "enemy detected" sound is quieter than the rest (lower = quieter)
 const GAMEOVER_GAIN = 1; // the game over sound (lower = quieter)
 let sfxContext = null;
 const sfxBuffers = {}; // src -> decoded audio (or a promise while it loads)
@@ -139,9 +139,9 @@ const HOVER_SCALE = 0.94;
 
 // Win screen: Play sits left of the text in the victory box, Menu sits right of it.
 // Tweak these (in canvas pixels, the canvas is 900x500) to nudge the buttons.
-const WIN_BUTTON_WIDTH = 140;
-const WIN_BUTTON_OFFSET = 205; // distance of each button's center from the screen center
-const WIN_BUTTONS_CENTER_Y = 313; // vertical middle of the buttons
+const WIN_BUTTON_WIDTH = 175;
+const WIN_BUTTON_OFFSET = 105; // distance of each button's center from the screen center
+const WIN_BUTTONS_CENTER_Y = 400; // vertical middle of the buttons
 
 // Where the mouse is on the canvas (in canvas pixels), updated by the Game
 const pointer = { x: 0, y: 0, inside: false };
