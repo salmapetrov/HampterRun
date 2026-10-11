@@ -16,6 +16,10 @@ import { SPIKE_IMAGES } from "./obstacles.js";
 import { OBJECT_IMAGES, createObjects, hitbox, drawObjects } from "./objects.js";
 import { Battle, BATTLE_IMAGES } from "./battle.js";
 
+// ---- Music (files in /public are served from the site root) ----
+const BATTLE_MUSIC = "/assets/sounds/Jeremy Blake - Powerup!.mp3";
+const MENU_MUSIC = "/assets/sounds/AdhesiveWombat - Night Shade.mp3";
+
 // Seconds the screen glows blue after touching a gem (just a visual effect)
 const GEM_GLOW_TIME = 1;
 
@@ -217,7 +221,6 @@ export class Game {
     this.instructionsImage = null;
     this.instructionsShownAt = 0;
     loadImage(INSTRUCTIONS_IMAGE).then((img) => {
-      console.log("instructions image:", img);
       this.instructionsImage = img;
       if (!img) {
         console.warn("Instructions image not found:", INSTRUCTIONS_IMAGE);
@@ -229,6 +232,28 @@ export class Game {
       this.menuBackgroundImage = img;
       if (!img) console.warn("Menu background not found:", MENU_BACKGROUND_IMAGE);
     });
+
+    // Battle music: loops while a battle is happening
+    this.battleMusic = new Audio(encodeURI(BATTLE_MUSIC));
+    this.battleMusic.loop = true;
+    this.battleMusic.volume = 0.5; // 0 to 1
+
+    // Menu music: plays on the menu and instructions screens, stops when the game starts
+    this.menuMusic = new Audio(encodeURI(MENU_MUSIC));
+    this.menuMusic.loop = true;
+    this.menuMusic.volume = 0.3; // 0 to 1
+
+    // Browsers block sound until the player clicks or presses a key, so try now
+    // and again on the first click or key press while on the menu or instructions
+    this.startMenuMusic();
+    const unlockMenuMusic = () => {
+      const screen = this.state === "pressing" && this.pending
+        ? this.pending.from
+        : this.state;
+      if (screen === "menu" || screen === "instructions") this.startMenuMusic();
+    };
+    window.addEventListener("pointerdown", unlockMenuMusic);
+    window.addEventListener("keydown", unlockMenuMusic);
 
     this.running = false;
     this.lastTime = 0;
@@ -285,6 +310,7 @@ export class Game {
       if (event.detail.action === "SLASH" && this.scene === "battle" && this.battle) {
         this.battle.choose("slash");
       }
+
       if (
         event.detail.action === "DODGE" &&
         this.scene === "battle" &&
@@ -292,8 +318,6 @@ export class Game {
       ) {
         this.battle.dodge();
       }
-
-      
     });
 
     window.addEventListener("keydown", (event) => {
@@ -373,6 +397,30 @@ export class Game {
     }
   }
 
+  startBattleMusic() {
+    if (!this.battleMusic) return;
+    this.battleMusic.currentTime = 0;
+    this.battleMusic.play().catch(() => {});
+  }
+
+  stopBattleMusic() {
+    if (!this.battleMusic) return;
+    this.battleMusic.pause();
+    this.battleMusic.currentTime = 0;
+  }
+
+  // Does nothing if the music is already playing, so it never restarts
+  startMenuMusic() {
+    if (!this.menuMusic || !this.menuMusic.paused) return;
+    this.menuMusic.play().catch(() => {});
+  }
+
+  stopMenuMusic() {
+    if (!this.menuMusic) return;
+    this.menuMusic.pause();
+    this.menuMusic.currentTime = 0;
+  }
+
   // Put the level back to the start: camera, hamster, spikes, gems, glow
   resetLevel() {
     this.distance = 0;
@@ -386,6 +434,7 @@ export class Game {
     this.battleEnemy = null;
     this.player.reset();
     this.obstacles.reset();
+    this.stopBattleMusic();
   }
 
   // Starts the render loop (shows the menu first)
@@ -452,6 +501,7 @@ export class Game {
   }
 
   startGame() {
+    this.stopMenuMusic();
     this.resetLevel();
     this.state = "playing";
 
@@ -463,6 +513,7 @@ export class Game {
     this.resetLevel();
     this.runSpeed = 0;
     this.state = "menu";
+    this.startMenuMusic();
 
     // Let main.js know we're back at the menu (hides the camera panel)
     window.dispatchEvent(new CustomEvent("hampter-menu"));
@@ -562,12 +613,14 @@ export class Game {
     if (this.sceneTime >= TRANSFORM_TIME) {
       this.scene = "battle";
       this.battle = new Battle(this.battleImages);
+      this.startBattleMusic();
     }
   }
 
   // Battle over. Won: the evil hampter is gone. Lost: lose a heart (game over
   // if it was the last one). Either way, back to running.
   endBattle(result) {
+    this.stopBattleMusic();
     this.battleEnemy.state = "gone";
     this.battleEnemy = null;
     this.battle = null;
@@ -818,14 +871,12 @@ export class Game {
     ctx.textAlign = "left";
   }
 
-  // Forest behind the title and instructions screens (those images are see-through)
+  // Background behind the title and instructions screens (those images are see-through)
   drawMenuBackground() {
     const ctx = this.ctx;
 
     if (this.menuBackgroundImage) {
-      // Scale to the canvas height and show the left part, like the start of the level
-      const img = this.menuBackgroundImage;
-      const scale = GAME_HEIGHT / img.naturalHeight;
+      // Stretched to fit the whole canvas
       ctx.drawImage(this.menuBackgroundImage, 0, 0, GAME_WIDTH, GAME_HEIGHT);
       return;
     }
