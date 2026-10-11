@@ -58,6 +58,18 @@ const game = new Game(gameCanvas);
 // sound icons can sit on top of it). The <img id="instructions"> in index.html
 // stays hidden and is not used.
 
+// Credits screen: a regular <img> over the canvas, so it renders at the
+// screen's full resolution instead of the canvas's pixelated 900x500.
+// It's centered with a margin, so the corner icons stay visible.
+const credits = document.querySelector("#credits");
+
+function syncCredits() {
+  credits.hidden = game.state !== "credits";
+  requestAnimationFrame(syncCredits);
+}
+
+requestAnimationFrame(syncCredits);
+
 // Wait for images to load before starting the game.
 game.loadAssets().then(() => game.start());
 
