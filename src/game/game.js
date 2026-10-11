@@ -25,19 +25,66 @@ const GAME_MUSIC = "/assets/sounds/8 Bit Epic GameBoy! Fantasy Adventure Chiptun
 const HOVER_SOUND = "/assets/sounds/ui/Buttons/hover_soft_01.wav";
 const CLICK_SOUND = "/assets/sounds/ui/Buttons/boop_up_01.wav";
 
-// Plays a short sound effect. A fresh copy each time, so quick repeats overlap
-// instead of cutting each other off.
-const soundCache = {};
+// ---- Game event sounds ----
+const LOSE_SOUND = "/assets/sounds/make_more_sound-8-bit-video-game-lose-sound-version-1-145828.mp3";
+const ENEMY_SOUND = "/assets/sounds/enemydetected.mp3"; // touching a sad hampter
+const WIN_SOUND = "/assets/sounds/Success 1 (subtle).wav";
 
 // Mute switch for the music only (button sounds always play)
 const audioState = { muted: false };
 
-function playSound(src, volume = 0.8) {
-  if (!soundCache[src]) soundCache[src] = new Audio(encodeURI(src));
+// Sound effects go through the Web Audio API so they can be played louder than a
+// normal audio element allows (its volume tops out at 1). Each sound is loaded
+// once, then every play is a fresh copy, so quick repeats overlap.
+const SFX_GAIN = 1.8; // 1 = original loudness, higher = louder (too high can distort)
+let sfxContext = null;
+const sfxBuffers = {}; // src -> decoded audio (or a promise while it loads)
 
-  const sound = soundCache[src].cloneNode();
-  sound.volume = volume;
-  sound.play().catch(() => {}); // browsers may block sound before the first click
+function getSfxContext() {
+  if (!sfxContext) {
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    if (Ctx) sfxContext = new Ctx();
+  }
+  return sfxContext;
+}
+
+// Loads and decodes a sound ahead of time so the first play isn't silent
+function preloadSound(src) {
+  const ctx = getSfxContext();
+  if (!ctx || sfxBuffers[src]) return;
+
+  sfxBuffers[src] = fetch(encodeURI(src))
+    .then((response) => response.arrayBuffer())
+    .then((data) => ctx.decodeAudioData(data))
+    .then((buffer) => {
+      sfxBuffers[src] = buffer;
+    })
+    .catch((error) => {
+      console.warn("Sound could not load:", src, error.message);
+      delete sfxBuffers[src];
+    });
+}
+
+function playSound(src, gain = SFX_GAIN) {
+  const ctx = getSfxContext();
+  if (!ctx) return;
+
+  // Browsers keep audio paused until the player has clicked or pressed a key
+  if (ctx.state === "suspended") ctx.resume().catch(() => {});
+
+  const buffer = sfxBuffers[src];
+  if (!(buffer instanceof AudioBuffer)) {
+    preloadSound(src); // not ready yet: skip this one, it's ready next time
+    return;
+  }
+
+  const source = ctx.createBufferSource();
+  const volume = ctx.createGain();
+  source.buffer = buffer;
+  volume.gain.value = gain;
+  source.connect(volume);
+  volume.connect(ctx.destination);
+  source.start();
 }
 
 // Seconds the screen glows blue after touching a gem (just a visual effect)
@@ -323,6 +370,11 @@ export class Game {
       if (!img) console.warn("Menu background not found:", MENU_BACKGROUND_IMAGE);
     });
 
+    // Load the sound effects now so the first hover or click isn't silent
+    for (const src of [HOVER_SOUND, CLICK_SOUND, LOSE_SOUND, ENEMY_SOUND, WIN_SOUND]) {
+      preloadSound(src);
+    }
+
     // Battle music: loops while a battle is happening
     this.battleMusic = new Audio(encodeURI(BATTLE_MUSIC));
     this.battleMusic.loop = true;
@@ -340,14 +392,6 @@ export class Game {
     this.gameMusicWanted = false; // true while the level music should be playing
     this.gameMusicResumeAt = 0; // where the level music was when a battle started
     this.musicRetry = 0; // seconds until the next "is it playing?" check
-
-    // Collision sound effect
-    this.collisionSound = new Audio("/assets/sounds/collide.wav");
-    this.collisionSound.volume = 0.6;
-
-    // Gem sound effect
-    this.powerupSound = new Audio("/assets/sounds/powerup.wav");
-    this.powerupSound.volume = 0.7;
 
     // Browsers block sound until the player clicks or presses a key, so try now
     // and again on the first click or key press while on the menu or instructions
@@ -850,11 +894,9 @@ export class Game {
     this.player.updateAnimation(dt, this.isRunning || this.keyboardRunning);
 
     if (this.obstacles.wasHit) {
-      this.collisionSound.currentTime = 0;
-      this.collisionSound.play().catch(() => {});
-
       if (this.obstacles.isGameOver) {
         this.player.playDeath();
+        playSound(LOSE_SOUND);
         this.state = "dying";
         this.stopGameMusic();
       } else {
@@ -865,6 +907,7 @@ export class Game {
     // Made it to the end of the last background copy: show the win screen
     if (this.state === "playing" && this.distance >= this.maxDistance()) {
       this.state = "win";
+      playSound(WIN_SOUND);
       this.stopGameMusic();
 
       // Same as game over for main.js (hides the camera panel)
@@ -962,6 +1005,7 @@ export class Game {
       this.obstacles.lives = Math.max(0, this.obstacles.lives - 1);
       if (this.obstacles.isGameOver) {
         this.player.playDeath();
+        playSound(LOSE_SOUND);
         this.state = "dying";
         this.stopGameMusic();
       } else {
@@ -1029,10 +1073,6 @@ export class Game {
       if (isColliding(this.player, hitbox(obj))) {
         obj.state = "collected";
         this.player.launch();
-
-        this.powerupSound.currentTime = 0;
-        this.powerupSound.play().catch(() => {});
-
         this.jumpMomentum = 1;
         this.gemGlowTime = GEM_GLOW_TIME;
       }
@@ -1045,6 +1085,7 @@ export class Game {
         obj.state = "evil";
         this.battleEnemy = obj;
         this.scene = "transform";
+        playSound(ENEMY_SOUND);
         this.sceneTime = 0;
         return;
       }
@@ -1092,9 +1133,9 @@ export class Game {
     ctx.font = "bold 44px sans-serif";
     ctx.lineWidth = 6;
     ctx.strokeStyle = "#000000";
-    ctx.strokeText("ENCOUNTERED EVIL HAMPTER!", GAME_WIDTH / 2, 120);
+    ctx.strokeText("HAMPTER TURNED EVIL!", GAME_WIDTH / 2, 120);
     ctx.fillStyle = "#FF3B3B";
-    ctx.fillText("ENCOUNTERED EVIL HAMPTER!", GAME_WIDTH / 2, 120);
+    ctx.fillText("HAMPTER TURNED EVIL!", GAME_WIDTH / 2, 120);
     ctx.textAlign = "left";
   }
 
@@ -1139,9 +1180,11 @@ export class Game {
   drawInstructions() {
     const ctx = this.ctx;
 
-    // The image itself is the #instructions <img> in index.html, shown by
-    // main.js on top of the canvas so its text isn't pixelated
-    if (this.instructionsImage) return;
+    if (this.instructionsImage) {
+      // Instructions screen (900x500, drawn over the whole canvas)
+      ctx.drawImage(this.instructionsImage, 0, 0, GAME_WIDTH, GAME_HEIGHT);
+      return;
+    }
 
     // Fallback text if the image hasn't loaded
     ctx.textAlign = "center";
