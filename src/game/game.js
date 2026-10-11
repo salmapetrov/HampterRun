@@ -306,7 +306,7 @@ export class Game {
 
       if (event.code === "KeyD") this.showGroundDebug = !this.showGroundDebug;
 
-      // Battle: 1 = slash
+      // Battle: 1 = punch
       if (this.scene === "battle" && this.battle) this.battle.handleKey(event.code);
     });
 
@@ -479,13 +479,16 @@ export class Game {
       return;
     }
 
-    // No jumping while a hampter turns evil or during the battle
+    // No jumping while a hampter turns evil; in the battle, jumping dodges bullets
     if (this.state === "playing" && this.scene === "run") {
       // Remember take-off speed so the hamster keeps moving forward mid-air,
       // even if the webcam stops seeing "running" while you jump (Thaira's idea)
       if (this.player.isGrounded) this.jumpMomentum = this.runSpeed;
 
       this.player.jump();
+    } else if (this.state === "playing" && this.scene === "battle" && this.battle) {
+      // Space jumps to dodge bullets in the battle (webcam sends DODGE)
+      this.battle.dodge();
     }
   }
 
