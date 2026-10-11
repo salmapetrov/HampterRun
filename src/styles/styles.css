@@ -136,8 +136,9 @@ h1 {
   border-bottom: 0;
 }
 
-/* How to play image, centered over the game (see main.js) */
-#instructions {
+/* How to play and credits images, centered over the game (see main.js) */
+#instructions,
+#credits {
   position: fixed;
   inset: 0;
   z-index: 5;
@@ -148,6 +149,7 @@ h1 {
   pointer-events: none; /* clicks still go to the game */
 }
 
-#instructions[hidden] {
+#instructions[hidden],
+#credits[hidden] {
   display: none;
 }

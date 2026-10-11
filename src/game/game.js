@@ -108,9 +108,10 @@ const TITLE_IMAGE = "/assets/backgrounds/title.png";
 const GAME_OVER_IMAGE = "/assets/backgrounds/gameOver.png";
 const VICTORY_IMAGE = "/assets/backgrounds/hamptervictory.png";
 const INSTRUCTIONS_IMAGE = "/assets/backgrounds/instructions.png";
+const CREDITS_IMAGE = "/assets/backgrounds/hampter-credits.png";
 const MENU_BACKGROUND_IMAGE = "/assets/backgrounds/background4.png";
 
-// Home icon: top left on the instructions screen and while playing
+// Home icon: top left on the instructions and credits screens and while playing
 const ICON_DIR = "/assets/menu/Icons";
 const HOME_STATIC = `${ICON_DIR}/Static/Blue/Blue (28).png`;
 const HOME_ANIM_DIR = `${ICON_DIR}/Animated/Blue/Blue (28)`;
@@ -293,6 +294,7 @@ function loadImage(src) {
 }
 
 // Game states:
+//   "menu" -> "credits" (Credits button) -> "menu" (Home / click / Enter)
 //   "menu" -> "instructions" -> "playing" -> "gameover" or "win" -> "playing" (Play) or "menu" (Menu)
 //   "dying" = death animation playing before "gameover"
 //   "win" = reached the end of the last background copy
@@ -316,6 +318,11 @@ export class Game {
       centerX: GAME_WIDTH / 2,
       y: GAME_HEIGHT / 2 + 60,
       width: 260,
+    });
+    this.creditsButton = blueButton("Credits", {
+      centerX: GAME_WIDTH / 2,
+      y: GAME_HEIGHT / 2 + 158,
+      width: 200,
     });
     this.playButton = blueButton("Play", {
       centerX: GAME_WIDTH / 2 - 120,
@@ -390,6 +397,13 @@ export class Game {
       }
     });
 
+    this.creditsImage = null;
+    this.creditsShownAt = 0;
+    loadImage(CREDITS_IMAGE).then((img) => {
+      this.creditsImage = img;
+      if (!img) console.warn("Credits image not found:", CREDITS_IMAGE);
+    });
+
     this.menuBackgroundImage = null;
     loadImage(MENU_BACKGROUND_IMAGE).then((img) => {
       this.menuBackgroundImage = img;
@@ -412,9 +426,9 @@ export class Game {
     // Battle music: loops while a battle is happening
     this.battleMusic = new Audio(encodeURI(BATTLE_MUSIC));
     this.battleMusic.loop = true;
-    this.battleMusic.volume = 0.5; // 0 to 1
+    this.battleMusic.volume = 0.4; // 0 to 1
 
-    // Menu music: plays on the menu and instructions screens, stops when the game starts
+    // Menu music: plays on the menu, credits and instructions screens, stops when the game starts
     this.menuMusic = new Audio(encodeURI(MENU_MUSIC));
     this.menuMusic.loop = true;
     this.menuMusic.volume = 0.2; // 0 to 1
@@ -424,7 +438,6 @@ export class Game {
     this.gameMusic.loop = true;
     this.gameMusic.volume = 0.2; // 0 to 1
     this.gameMusicWanted = false; // true while the level music should be playing
-    this.gameMusicResumeAt = 0; // where the level music was when a battle started
     this.musicRetry = 0; // seconds until the next "is it playing?" check
 
     // Browsers block sound until the player clicks or presses a key, so try now
@@ -434,7 +447,9 @@ export class Game {
       const screen = this.state === "pressing" && this.pending
         ? this.pending.from
         : this.state;
-      if (screen === "menu" || screen === "instructions") this.startMenuMusic();
+      if (screen === "menu" || screen === "credits" || screen === "instructions") {
+        this.startMenuMusic();
+      }
     };
     window.addEventListener("pointerdown", unlockMenuMusic);
     window.addEventListener("keydown", unlockMenuMusic);
@@ -562,10 +577,12 @@ export class Game {
       const x = (event.clientX - rect.left) * (this.canvas.width / rect.width);
       const y = (event.clientY - rect.top) * (this.canvas.height / rect.height);
 
-      // The home icon shows on the instructions and gameplay screens
+      // The home icon shows on the instructions, credits and gameplay screens
       // (not during the boss battle, which has its own UI)
       const homeVisible =
-        (this.state === "instructions" || this.state === "playing") &&
+        (this.state === "instructions" ||
+          this.state === "credits" ||
+          this.state === "playing") &&
         this.scene !== "battle" &&
         this.scene !== "reveal" &&
         this.scene !== "exitWipe";
@@ -576,6 +593,10 @@ export class Game {
         this.toggleMute();
       } else if (this.state === "menu" && this.startButton.contains(x, y)) {
         this.beginStart();
+      } else if (this.state === "menu" && this.creditsButton.contains(x, y)) {
+        this.press(this.creditsButton, () => this.showCredits());
+      } else if (this.state === "credits") {
+        this.leaveCredits();
       } else if (this.state === "instructions") {
         this.leaveInstructions();
       } else if (this.state === "playing" && this.scene === "battle") {
@@ -728,51 +749,15 @@ export class Game {
     });
   }
 
-  // Remembers where the level music is, then pauses it (used when a battle starts)
-  pauseGameMusicForBattle() {
-    if (!this.gameMusic) return;
-    this.gameMusicResumeAt = this.gameMusic.currentTime;
-    this.gameMusic.pause();
-  }
-
-  // Brings the level music back after a battle, picking up where it left off.
-  // It builds a fresh audio element (a reused one stayed silent) and jumps to
-  // the saved spot once the browser knows the song's length.
-  resumeGameMusic() {
-    if (!this.gameMusic) return;
-    this.gameMusicWanted = true;
-
-    const resumeAt = this.gameMusicResumeAt;
-
-    this.gameMusic.pause();
-    this.gameMusic = new Audio(encodeURI(GAME_MUSIC));
-    this.gameMusic.loop = true;
-    this.gameMusic.volume = 0.2;
-    this.gameMusic.muted = audioState.muted;
-
-    this.gameMusic.addEventListener(
-      "loadedmetadata",
-      () => {
-        if (resumeAt > 0 && resumeAt < this.gameMusic.duration) {
-          this.gameMusic.currentTime = resumeAt;
-        }
-      },
-      { once: true }
-    );
-
-    this.gameMusic.play().catch((error) => {
-      console.warn("Game music could not play:", error.name, error.message);
-    });
-  }
 
   // Stops it and rewinds to the start
   stopGameMusic() {
     if (!this.gameMusic) return;
     this.gameMusicWanted = false;
-    this.gameMusicResumeAt = 0;
     this.gameMusic.pause();
     this.gameMusic.currentTime = 0;
   }
+
 
   // Put the level back to the start: camera, hamster, spikes, gems, glow
   resetLevel() {
@@ -834,6 +819,19 @@ export class Game {
     this.instructionsShownAt = performance.now();
   }
 
+  showCredits() {
+    this.state = "credits";
+    this.creditsShownAt = performance.now();
+  }
+
+  // Back to the title screen (ignores input for a moment, like the instructions)
+  leaveCredits() {
+    if (this.state !== "credits") return;
+    if (performance.now() - this.creditsShownAt < 400) return;
+
+    this.state = "menu";
+  }
+
   // Continue to the game (ignores input for a moment so a held key can't skip the screen)
   leaveInstructions() {
     if (this.state !== "instructions") return;
@@ -847,10 +845,12 @@ export class Game {
     return this.state === "gameover" || this.state === "win";
   }
 
-  // Enter / Space: Start on the menu, continue on instructions, Play on the game over / win screen
+  // Enter / Space: Start on the menu, back to the menu from credits, continue on instructions, Play on the game over / win screen
   pressMainButton() {
     if (this.state === "menu") {
       this.beginStart();
+    } else if (this.state === "credits") {
+      this.leaveCredits();
     } else if (this.state === "instructions") {
       this.leaveInstructions();
     } else if (this.isEndScreen()) {
@@ -882,6 +882,7 @@ export class Game {
   jump() {
     if (
       this.state === "menu" ||
+      this.state === "credits" ||
       this.state === "instructions" ||
       this.isEndScreen()
     ) {
@@ -1009,7 +1010,7 @@ export class Game {
       this.scene = "wipe";
       this.wipeTime = 0;
       this.wipeCells = this.makeWipeCells();
-      this.pauseGameMusicForBattle(); // game music picks up here after the battle
+      this.stopGameMusic(); // rewinds; the level music starts over after the battle
       this.startBattleMusic();
     }
   }
@@ -1077,7 +1078,7 @@ export class Game {
     }
   }
 
-  // The battle just ended: black blocks fill the screen over the battle scene
+// The battle just ended: black blocks fill the screen over the battle scene
   beginExitWipe(result) {
     this.battleResult = result;
     this.scene = "exitWipe";
@@ -1099,7 +1100,7 @@ export class Game {
     }
   }
 
-  // Same blocks as the wipe, cleared in reverse over the level
+  // Same blocks as the wipe, cleared in reverse over the level after a battle
   drawExitReveal() {
     const ctx = this.ctx;
     const remaining = this.exitRevealLeft / REVEAL_TIME;
@@ -1131,8 +1132,8 @@ export class Game {
       }
     }
 
-    // Back to the level: pick the game music up where it left off
-    if (this.state === "playing") this.resumeGameMusic();
+    // Back to the level: the game music starts over from the beginning
+    if (this.state === "playing") this.startGameMusic();
   }
 
   // The level is MAX_LAPS copies of the background. The hamster stops when
@@ -1292,6 +1293,7 @@ export class Game {
     }
 
     b.draw(ctx, this.animTimeFor(b));
+    this.creditsButton.draw(ctx, this.animTimeFor(this.creditsButton));
 
     ctx.textAlign = "left";
   }
@@ -1319,6 +1321,29 @@ export class Game {
 
     ctx.font = "22px sans-serif";
     ctx.fillText("Press SPACE or click to begin", GAME_WIDTH / 2, 380);
+
+    ctx.textAlign = "left";
+  }
+
+  drawCredits() {
+    const ctx = this.ctx;
+
+    // The image itself is the #credits <img> in index.html, shown by main.js
+    // on top of the canvas (same as the instructions)
+    if (this.creditsImage) return;
+
+    // Fallback text if the image hasn't loaded
+    ctx.textAlign = "center";
+    ctx.fillStyle = "#000000";
+
+    ctx.font = "bold 48px sans-serif";
+    ctx.fillText("CREDITS", GAME_WIDTH / 2, 120);
+
+    ctx.font = "26px sans-serif";
+    ctx.fillText("Cheryl Nguyen", GAME_WIDTH / 2, 200);
+    ctx.fillText("Salma Petrov", GAME_WIDTH / 2, 245);
+    ctx.fillText("Thaira Choudhury", GAME_WIDTH / 2, 290);
+    ctx.fillText("Rhode Sanchez", GAME_WIDTH / 2, 335);
 
     ctx.textAlign = "left";
   }
@@ -1377,7 +1402,7 @@ export class Game {
     ctx.textAlign = "left";
   }
 
-  // Background behind the title and instructions screens (those images are see-through)
+  // Background behind the title, credits and instructions screens (those images are see-through)
   drawMenuBackground() {
     const ctx = this.ctx;
 
@@ -1409,6 +1434,14 @@ export class Game {
     if (screen === "menu") {
       this.drawMenuBackground();
       this.drawMenu();
+      return;
+    }
+
+    if (screen === "credits") {
+      this.drawMenuBackground();
+      this.drawCredits();
+      this.homeButton.draw(ctx, this.animTimeFor(this.homeButton));
+      this.currentSoundButton().draw(ctx);
       return;
     }
 
