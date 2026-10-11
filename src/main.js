@@ -53,6 +53,55 @@ const game = new Game(gameCanvas);
 // Wait for images to load before starting the game.
 game.loadAssets().then(() => game.start());
 
+// =====================================
+// BATTLE SCENE - WEBCAM FOLLOWS OUR HAMPTER
+// =====================================
+// During the battle the webcam shrinks and floats above our hampter's head,
+// following it as it dashes in to punch and jumps to dodge.
+
+const BATTLE_CAM_WIDTH = 128; // in game pixels (the game canvas is 900 wide)
+const BATTLE_CAM_GAP = 14; // game pixels between the webcam and the head
+
+let followingHampter = false;
+
+function followHampter() {
+  const follow =
+    cameraRunning &&
+    game.state === "playing" &&
+    game.scene === "battle" &&
+    game.battle;
+
+  if (follow) {
+    cameraPanel.classList.add("battle-cam");
+    followingHampter = true;
+
+    // The canvas is stretched to fill the window, so convert game pixels
+    // to screen pixels
+    const rect = gameCanvas.getBoundingClientRect();
+    const scaleX = rect.width / gameCanvas.width;
+    const scaleY = rect.height / gameCanvas.height;
+    const head = game.battle.hamsterHead;
+    const width = BATTLE_CAM_WIDTH * scaleX;
+
+    cameraPanel.style.width = `${width}px`;
+    cameraPanel.style.left = `${rect.left + head.x * scaleX - width / 2}px`;
+    cameraPanel.style.top =
+      `${rect.top + (head.y - BATTLE_CAM_GAP) * scaleY - cameraPanel.offsetHeight}px`;
+
+  } else if (followingHampter) {
+    // Battle over (or camera off): back to the corner
+    cameraPanel.classList.remove("battle-cam");
+    cameraPanel.style.removeProperty("width");
+    cameraPanel.style.removeProperty("left");
+    cameraPanel.style.removeProperty("top");
+    followingHampter = false;
+  }
+
+  requestAnimationFrame(followHampter);
+}
+
+requestAnimationFrame(followHampter);
+
 window.addEventListener("keydown", (event) => {
   if (event.code === "Space") {
     event.preventDefault();

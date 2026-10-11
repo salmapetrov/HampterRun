@@ -194,6 +194,15 @@ export class Battle {
     this.phaseTime = 0;
   }
 
+  // Top of our hampter's head on the canvas (main.js floats the webcam here).
+  // In each 48px frame the hampter is drawn around x 21, head at y 28.
+  get hamsterHead() {
+    return {
+      x: this.hamsterX + 21 * HAMSTER_SCALE,
+      y: FLOOR_Y - 46 * HAMSTER_SCALE + 28 * HAMSTER_SCALE + this.dodgeY,
+    };
+  }
+
   // PLAYER INPUT
 
   handleKey(code) {
