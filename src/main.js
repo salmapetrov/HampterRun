@@ -101,10 +101,13 @@ function followHampter() {
 
 // How to play screen: a regular <img> over the canvas, so it renders at the
 // screen's full resolution instead of the canvas's pixelated 900x500
+// (the credits screen works the same way)
 const instructions = document.querySelector("#instructions");
+const credits = document.querySelector("#credits");
 
 function syncInstructions() {
   instructions.hidden = game.state !== "instructions";
+  credits.hidden = game.state !== "credits";
   requestAnimationFrame(syncInstructions);
 }
 
