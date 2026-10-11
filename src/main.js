@@ -156,12 +156,6 @@ stop.addEventListener("click", () => {
 
   status.textContent = "Camera off";
 
-  const actionLabel = document.querySelector("#action");
-
-  if (actionLabel) {
-    actionLabel.textContent = "Waiting for player...";
-  }
-
   cameraBox.style.display = "none";
   start.disabled = false;
 });
@@ -239,9 +233,6 @@ const actions = gestures.update(landmarks, now);
         landmarks,
         now
       );
-
-      status.textContent =
-        `RUN: ${actions.running} | JUMP: ${actions.jump}`;
 
       // Send running movement
       window.dispatchEvent(
