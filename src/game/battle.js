@@ -43,8 +43,8 @@ const BULLET_DAMAGE = 5;
 const BULLET_SPEED = 650;
 const BULLET_GAP = 0.35;
 
-// 12 damage = 9 landed punches to K.O. the evil hampter
-const PUNCH_DAMAGE = 12;
+// 25 damage = 4 landed punches to K.O. the evil hampter (5 with a miss)
+const PUNCH_DAMAGE = 25;
 const PUNCH_HIT_CHANCE = 0.9;
 
 // Seconds the "jump to dodge" prompt shows before the first shot
