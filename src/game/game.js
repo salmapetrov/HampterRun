@@ -29,6 +29,8 @@ const CLICK_SOUND = "/assets/sounds/ui/Buttons/boop_up_01.wav";
 const LOSE_SOUND = "/assets/sounds/make_more_sound-8-bit-video-game-lose-sound-version-1-145828.mp3";
 const ENEMY_SOUND = "/assets/sounds/enemydetected.mp3"; // touching a sad hampter
 const WIN_SOUND = "/assets/sounds/Success 1 (subtle).wav";
+const GEM_SOUND = "/assets/sounds/powerup.wav"; // picking up a gem / boost
+const HIT_SOUND = "/assets/sounds/collide.wav"; // hitting a spike
 
 // Mute switch for the music only (button sounds always play)
 const audioState = { muted: false };
@@ -37,6 +39,7 @@ const audioState = { muted: false };
 // normal audio element allows (its volume tops out at 1). Each sound is loaded
 // once, then every play is a fresh copy, so quick repeats overlap.
 const SFX_GAIN = 1.8; // 1 = original loudness, higher = louder (too high can distort)
+const ENEMY_GAIN = 0.7; // the "enemy detected" sound is quieter than the rest (lower = quieter)
 let sfxContext = null;
 const sfxBuffers = {}; // src -> decoded audio (or a promise while it loads)
 
@@ -371,7 +374,15 @@ export class Game {
     });
 
     // Load the sound effects now so the first hover or click isn't silent
-    for (const src of [HOVER_SOUND, CLICK_SOUND, LOSE_SOUND, ENEMY_SOUND, WIN_SOUND]) {
+    for (const src of [
+      HOVER_SOUND,
+      CLICK_SOUND,
+      LOSE_SOUND,
+      ENEMY_SOUND,
+      WIN_SOUND,
+      GEM_SOUND,
+      HIT_SOUND,
+    ]) {
       preloadSound(src);
     }
 
@@ -894,6 +905,8 @@ export class Game {
     this.player.updateAnimation(dt, this.isRunning || this.keyboardRunning);
 
     if (this.obstacles.wasHit) {
+      playSound(HIT_SOUND);
+
       if (this.obstacles.isGameOver) {
         this.player.playDeath();
         playSound(LOSE_SOUND);
@@ -1073,6 +1086,7 @@ export class Game {
       if (isColliding(this.player, hitbox(obj))) {
         obj.state = "collected";
         this.player.launch();
+        playSound(GEM_SOUND);
         this.jumpMomentum = 1;
         this.gemGlowTime = GEM_GLOW_TIME;
       }
@@ -1085,7 +1099,7 @@ export class Game {
         obj.state = "evil";
         this.battleEnemy = obj;
         this.scene = "transform";
-        playSound(ENEMY_SOUND);
+        playSound(ENEMY_SOUND, ENEMY_GAIN);
         this.sceneTime = 0;
         return;
       }

@@ -1,4 +1,3 @@
-
 import {
   createPoseTracker,
   drawPose
@@ -18,6 +17,11 @@ const start = document.querySelector("#start");
 const stop = document.querySelector("#stop");
 const cameraBox = document.querySelector(".camera");
 const cameraPanel = document.querySelector(".camera-panel");
+
+// Webcam state (declared up here so followHampter below can safely read it)
+let tracker;
+let lastVideoTime = -1;
+let cameraRunning = false;
 
 // Keep the webcam hidden until it is enabled.
 cameraBox.style.display = "none";
@@ -49,6 +53,10 @@ window.addEventListener("hampter-gameover", () => {
 
 const gameCanvas = document.querySelector("#gameCanvas");
 const game = new Game(gameCanvas);
+
+// The how-to-play screen is drawn on the game canvas by game.js (so the home and
+// sound icons can sit on top of it). The <img id="instructions"> in index.html
+// stays hidden and is not used.
 
 // Wait for images to load before starting the game.
 game.loadAssets().then(() => game.start());
@@ -98,17 +106,6 @@ function followHampter() {
   }
 
   requestAnimationFrame(followHampter);
-
-// How to play screen: a regular <img> over the canvas, so it renders at the
-// screen's full resolution instead of the canvas's pixelated 900x500
-const instructions = document.querySelector("#instructions");
-
-function syncInstructions() {
-  instructions.hidden = game.state !== "instructions";
-  requestAnimationFrame(syncInstructions);
-}
-
-requestAnimationFrame(syncInstructions);
 }
 
 requestAnimationFrame(followHampter);
@@ -119,10 +116,6 @@ window.addEventListener("keydown", (event) => {
     game.jump();
   }
 });
-
-let tracker;
-let lastVideoTime = -1;
-let cameraRunning = false;
 
 // Body position detection for future movement controls
 function detectBodyPosition(landmarks) {
@@ -268,18 +261,19 @@ function trackFrame() {
         );
 
       }
+
       // Detect jumping during battle
-const actions = gestures.update(landmarks, now);
+      const actions = gestures.update(landmarks, now);
 
       if (actions.jump) {
         console.log("Jump!");
-        window.dispatchEvent(
-        new CustomEvent("hampter-action", {
-        detail: { action: "DODGE" }
-        })
-  );
-}
 
+        window.dispatchEvent(
+          new CustomEvent("hampter-action", {
+            detail: { action: "DODGE" }
+          })
+        );
+      }
 
     }
 
