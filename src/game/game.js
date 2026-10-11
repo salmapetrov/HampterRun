@@ -257,6 +257,14 @@ export class Game {
     this.gameMusicResumeAt = 0; // where the level music was when a battle started
     this.musicRetry = 0; // seconds until the next "is it playing?" check
 
+    // Collision sound effect
+    this.collisionSound = new Audio("/assets/sounds/collide.wav");
+    this.collisionSound.volume = 0.6;
+
+    // Gem sound effect
+    this.powerupSound = new Audio("/assets/sounds/powerup.wav");
+    this.powerupSound.volume = 0.7;
+
     // Browsers block sound until the player clicks or presses a key, so try now
     // and again on the first click or key press while on the menu or instructions
     this.startMenuMusic();
@@ -680,6 +688,9 @@ export class Game {
     this.player.updateAnimation(dt, this.isRunning || this.keyboardRunning);
 
     if (this.obstacles.wasHit) {
+      this.collisionSound.currentTime = 0;
+      this.collisionSound.play().catch(() => {});
+
       if (this.obstacles.isGameOver) {
         this.player.playDeath();
         this.state = "dying";
@@ -856,6 +867,10 @@ export class Game {
       if (isColliding(this.player, hitbox(obj))) {
         obj.state = "collected";
         this.player.launch();
+
+        this.powerupSound.currentTime = 0;
+        this.powerupSound.play().catch(() => {});
+
         this.jumpMomentum = 1;
         this.gemGlowTime = GEM_GLOW_TIME;
       }
@@ -915,9 +930,9 @@ export class Game {
     ctx.font = "bold 44px sans-serif";
     ctx.lineWidth = 6;
     ctx.strokeStyle = "#000000";
-    ctx.strokeText("HAMPTER TURNED EVIL!", GAME_WIDTH / 2, 120);
+    ctx.strokeText("ENCOUNTERED EVIL HAMPTER!", GAME_WIDTH / 2, 120);
     ctx.fillStyle = "#FF3B3B";
-    ctx.fillText("HAMPTER TURNED EVIL!", GAME_WIDTH / 2, 120);
+    ctx.fillText("ENCOUNTERED EVIL HAMPTER!", GAME_WIDTH / 2, 120);
     ctx.textAlign = "left";
   }
 
