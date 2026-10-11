@@ -106,3 +106,32 @@ h1 {
     font-size: 13px;
   }
 }
+
+/* Battle: the webcam shrinks and floats above our hampter (see main.js) */
+.camera-panel.battle-cam {
+  right: auto;
+  padding: 0;
+}
+
+.camera-panel.battle-cam .camera-controls,
+.camera-panel.battle-cam #status {
+  display: none;
+}
+
+.camera-panel.battle-cam .camera {
+  border: 3px solid #2b1d12;
+  border-radius: 8px;
+  box-shadow: 0 3px 0 rgba(0, 0, 0, 0.35);
+}
+
+/* Little arrow pointing down at the hampter */
+.camera-panel.battle-cam::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: -9px;
+  transform: translateX(-50%);
+  border: 9px solid transparent;
+  border-top-color: #2b1d12;
+  border-bottom: 0;
+}
