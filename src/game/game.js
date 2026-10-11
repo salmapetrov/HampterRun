@@ -1253,9 +1253,9 @@ export class Game {
     ctx.font = "bold 44px sans-serif";
     ctx.lineWidth = 6;
     ctx.strokeStyle = "#000000";
-    ctx.strokeText("HAMPTER TURNED EVIL!", GAME_WIDTH / 2, 120);
+    ctx.strokeText("ENCOUNTERED EVIL HAMPTER!", GAME_WIDTH / 2, 120);
     ctx.fillStyle = "#FF3B3B";
-    ctx.fillText("HAMPTER TURNED EVIL!", GAME_WIDTH / 2, 120);
+    ctx.fillText("ENCOUNTERED EVIL HAMPTER!", GAME_WIDTH / 2, 120);
     ctx.textAlign = "left";
   }
 
