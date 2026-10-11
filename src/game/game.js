@@ -21,6 +21,25 @@ const BATTLE_MUSIC = "/assets/sounds/Jeremy Blake - Powerup!.mp3";
 const MENU_MUSIC = "/assets/sounds/AdhesiveWombat - Night Shade.mp3";
 const GAME_MUSIC = "/assets/sounds/8 Bit Epic GameBoy! Fantasy Adventure Chiptune Game Music by HeatleyBros.mp3";
 
+// ---- Button sounds ----
+const HOVER_SOUND = "/assets/sounds/ui/Buttons/hover_soft_01.wav";
+const CLICK_SOUND = "/assets/sounds/ui/Buttons/boop_up_01.wav";
+
+// Plays a short sound effect. A fresh copy each time, so quick repeats overlap
+// instead of cutting each other off.
+const soundCache = {};
+
+// Mute switch for the music only (button sounds always play)
+const audioState = { muted: false };
+
+function playSound(src, volume = 0.8) {
+  if (!soundCache[src]) soundCache[src] = new Audio(encodeURI(src));
+
+  const sound = soundCache[src].cloneNode();
+  sound.volume = volume;
+  sound.play().catch(() => {}); // browsers may block sound before the first click
+}
+
 // Seconds the screen glows blue after touching a gem (just a visual effect)
 const GEM_GLOW_TIME = 1;
 
@@ -39,15 +58,34 @@ const GAME_OVER_IMAGE = "/assets/backgrounds/gameOver.png";
 const INSTRUCTIONS_IMAGE = "/assets/backgrounds/instructions.png";
 const MENU_BACKGROUND_IMAGE = "/assets/backgrounds/background4.png";
 
-// Home icon (bottom right on the instructions and gameplay screens)
+// Home icon: top left on the instructions screen and while playing
 const ICON_DIR = "/assets/menu/Icons";
 const HOME_STATIC = `${ICON_DIR}/Static/Blue/Blue (28).png`;
 const HOME_ANIM_DIR = `${ICON_DIR}/Animated/Blue/Blue (28)`;
 const HOME_ANIM_PREFIX = "Blue (28)"; // frames are named <prefix>0.png, <prefix>1.png, ...
-const HOME_ICON_WIDTH = 70;
+const HOME_ICON_WIDTH = 56;
 const HOME_ICON_MARGIN = 20;
+
+// Sound toggle sits just left of the home icon.
+// Blue (36) = sound is on, Blue (37) = muted. It shows the current state.
+const SOUND_ON_STATIC = `${ICON_DIR}/Static/Blue/Blue (36).png`;
+const MUTED_STATIC = `${ICON_DIR}/Static/Blue/Blue (37).png`;
+const SOUND_ICON_GAP = 10;
+
+// The home and sound icons sit in the top left corner, this far from the edges
+const TOP_ICON_MARGIN = 8;
+
+// The lives counter is drawn by hud.js in the top left; this shifts it right (in canvas
+// pixels) so it lands near the top center. Raise or lower this to nudge it.
+const LIVES_SHIFT_X = 300;
 const MAX_FRAMES = 60;
 const ANIM_FPS = 12;
+
+// Buttons shrink to this fraction of their size while the mouse is over them
+const HOVER_SCALE = 0.94;
+
+// Where the mouse is on the canvas (in canvas pixels), updated by the Game
+const pointer = { x: 0, y: 0, inside: false };
 
 // A canvas button with a static image and an optional click animation
 class MenuButton {
@@ -83,6 +121,9 @@ class MenuButton {
       console.warn("Button image not found:", this.staticFile);
     }
 
+    // Buttons without an animation folder just have no click animation
+    if (!this.animDir) return;
+
     // Load animation frames until one is missing
     for (let i = 0; i < MAX_FRAMES; i++) {
       const frame = await loadImage(`${this.animDir}/${this.prefix}${i}.png`);
@@ -103,6 +144,20 @@ class MenuButton {
     return this.frames.length / ANIM_FPS;
   }
 
+  // Moves the button. Give either top or bottom: that edge stays where you put it
+  // (bottom is kept even if the image finishes loading later).
+  moveTo({ centerX, top, bottom }) {
+    this.x = centerX - this.width / 2;
+
+    if (bottom !== undefined) {
+      this.bottom = bottom;
+      this.y = bottom - this.height;
+    } else {
+      this.bottom = undefined;
+      this.y = top;
+    }
+  }
+
   contains(px, py) {
     return (
       px >= this.x &&
@@ -114,6 +169,14 @@ class MenuButton {
 
   // animTime = null draws the static image, a number plays the animation
   draw(ctx, animTime = null) {
+    // Shrinks slightly (around its center) while the mouse is over it
+    const hovered = pointer.inside && this.contains(pointer.x, pointer.y);
+    const scale = hovered ? HOVER_SCALE : 1;
+    const w = this.width * scale;
+    const h = this.height * scale;
+    const x = this.x + (this.width - w) / 2;
+    const y = this.y + (this.height - h) / 2;
+
     let image = this.image;
 
     if (animTime !== null && this.frames.length > 0) {
@@ -126,17 +189,17 @@ class MenuButton {
 
     if (image) {
       ctx.imageSmoothingEnabled = false; // keeps pixel art crisp
-      ctx.drawImage(image, this.x, this.y, this.width, this.height);
+      ctx.drawImage(image, x, y, w, h);
       return;
     }
 
     // Fallback placeholder if the image hasn't loaded
     ctx.fillStyle = "#D9A066";
-    ctx.fillRect(this.x, this.y, this.width, this.height);
+    ctx.fillRect(x, y, w, h);
     ctx.fillStyle = "#000000";
     ctx.font = "bold 32px sans-serif";
     ctx.textAlign = "center";
-    ctx.fillText(this.label, this.x + this.width / 2, this.y + this.height / 2 + 11);
+    ctx.fillText(this.label, x + w / 2, y + h / 2 + 11);
     ctx.textAlign = "left";
   }
 }
@@ -202,11 +265,32 @@ export class Game {
       staticFile: HOME_STATIC,
       animDir: HOME_ANIM_DIR,
       prefix: HOME_ANIM_PREFIX,
-      centerX: GAME_WIDTH - HOME_ICON_MARGIN - HOME_ICON_WIDTH / 2,
-      y: GAME_HEIGHT - HOME_ICON_MARGIN - HOME_ICON_WIDTH,
-      bottom: GAME_HEIGHT - HOME_ICON_MARGIN,
+      // Top center: the home icon is the right one of the pair
+      centerX: GAME_WIDTH / 2 + (HOME_ICON_WIDTH + SOUND_ICON_GAP) / 2,
+      y: HOME_ICON_MARGIN,
       width: HOME_ICON_WIDTH,
     });
+
+    // Sound on / muted icons (positioned by layoutIcons below)
+    const soundIcon = {
+      animDir: null,
+      prefix: "",
+      centerX: GAME_WIDTH / 2 - (HOME_ICON_WIDTH + SOUND_ICON_GAP) / 2,
+      y: HOME_ICON_MARGIN,
+      width: HOME_ICON_WIDTH,
+    };
+    this.soundOnButton = new MenuButton({
+      ...soundIcon,
+      label: "SOUND",
+      staticFile: SOUND_ON_STATIC,
+    });
+    this.mutedButton = new MenuButton({
+      ...soundIcon,
+      label: "MUTED",
+      staticFile: MUTED_STATIC,
+    });
+
+    this.layoutIcons();
 
     // Button press animation
     this.pending = null; // { button, action, from }
@@ -360,6 +444,29 @@ export class Game {
       }
     });
 
+    // Hover sound: plays once when the mouse moves onto a button
+    this.hoveredButton = null;
+
+    this.canvas.addEventListener("mousemove", (event) => {
+      const rect = this.canvas.getBoundingClientRect();
+      const x = (event.clientX - rect.left) * (this.canvas.width / rect.width);
+      const y = (event.clientY - rect.top) * (this.canvas.height / rect.height);
+
+      pointer.x = x;
+      pointer.y = y;
+      pointer.inside = true;
+
+      const over = this.visibleButtons().find((b) => b.contains(x, y)) || null;
+
+      if (over && over !== this.hoveredButton) playSound(HOVER_SOUND);
+      this.hoveredButton = over;
+    });
+
+    this.canvas.addEventListener("mouseleave", () => {
+      pointer.inside = false;
+      this.hoveredButton = null;
+    });
+
     // Click the buttons
     this.canvas.addEventListener("click", (event) => {
       // Convert screen click to canvas coordinates
@@ -376,6 +483,8 @@ export class Game {
 
       if (homeVisible && this.homeButton.contains(x, y)) {
         this.press(this.homeButton, () => this.goToMenu());
+      } else if (homeVisible && this.currentSoundButton().contains(x, y)) {
+        this.toggleMute();
       } else if (this.state === "menu" && this.startButton.contains(x, y)) {
         this.beginStart();
       } else if (this.state === "instructions") {
@@ -390,6 +499,56 @@ export class Game {
         }
       }
     });
+  }
+
+  // Places the home and sound icons in the top left corner (home first, then
+  // the sound icon to its right). Used on the instructions screen and while playing.
+  layoutIcons() {
+    const w = HOME_ICON_WIDTH;
+
+    this.homeButton.moveTo({
+      centerX: TOP_ICON_MARGIN + w / 2,
+      top: TOP_ICON_MARGIN,
+    });
+    for (const b of [this.soundOnButton, this.mutedButton]) {
+      b.moveTo({
+        centerX: TOP_ICON_MARGIN + w + SOUND_ICON_GAP + w / 2,
+        top: TOP_ICON_MARGIN,
+      });
+    }
+  }
+
+  // Whichever sound icon matches the current state
+  currentSoundButton() {
+    return audioState.muted ? this.mutedButton : this.soundOnButton;
+  }
+
+  // Mutes or unmutes the music only (button sounds still play)
+  toggleMute() {
+    playSound(CLICK_SOUND);
+    audioState.muted = !audioState.muted;
+
+    for (const music of [this.menuMusic, this.gameMusic, this.battleMusic]) {
+      if (music) music.muted = audioState.muted;
+    }
+  }
+
+  // The buttons on screen right now (used for the hover sound)
+  visibleButtons() {
+    if (this.state === "menu") return [this.startButton];
+    if (this.state === "instructions") {
+      return [this.homeButton, this.currentSoundButton()];
+    }
+    if (this.isEndScreen()) return [this.playButton, this.menuButton];
+
+    if (
+      this.state === "playing" &&
+      this.scene !== "battle" &&
+      this.scene !== "reveal"
+    ) {
+      return [this.homeButton, this.currentSoundButton()];
+    }
+    return [];
   }
 
   // Load the level images. main.js waits for this before calling start().
@@ -472,7 +631,8 @@ export class Game {
     this.gameMusic.pause();
     this.gameMusic = new Audio(encodeURI(GAME_MUSIC));
     this.gameMusic.loop = true;
-    this.gameMusic.volume = 0.3;
+    this.gameMusic.volume = 0.2;
+    this.gameMusic.muted = audioState.muted;
 
     this.gameMusic.addEventListener(
       "loadedmetadata",
@@ -532,6 +692,8 @@ export class Game {
   // Play the button's click animation, then run its action
   press(button, action) {
     if (this.state === "pressing") return;
+
+    playSound(CLICK_SOUND);
 
     if (button.frames.length === 0) {
       action();
@@ -1073,6 +1235,7 @@ export class Game {
       this.drawMenuBackground();
       this.drawInstructions();
       this.homeButton.draw(ctx, this.animTimeFor(this.homeButton));
+      this.currentSoundButton().draw(ctx);
       return;
     }
 
@@ -1098,10 +1261,15 @@ export class Game {
     if (this.gemGlowTime > 0) this.drawGemGlow();
     if (this.scene === "transform" || this.scene === "wipe") this.drawTransform();
 
+    // Lives counter: shifted right so it sits at the top center
+    ctx.save();
+    ctx.translate(LIVES_SHIFT_X, 0);
     this.livesDisplay.draw(ctx, this.obstacles.lives);
+    ctx.restore();
 
     if (screen === "playing") {
       this.homeButton.draw(ctx, this.animTimeFor(this.homeButton));
+      this.currentSoundButton().draw(ctx);
     }
 
     if (this.showGroundDebug) {
