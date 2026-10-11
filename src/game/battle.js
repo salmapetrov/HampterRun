@@ -154,6 +154,9 @@ export class Battle {
     this.gunshotSound = new Audio("/assets/sounds/Laser_Gun.wav");
     this.gunshotSound.volume = 0.5;
 
+    this.damageSound = new Audio("/assets/sounds/collide.wav");
+    this.damageSound.volume = 0.7;
+
     this.evilWhite = images.evil
       ? whiteSilhouette(images.evil, EVIL_W, EVIL_H)
       : null;
@@ -351,6 +354,8 @@ export class Battle {
         } else {
           // Bullet hits hamster
           this.playerHp = Math.max(0, this.playerHp - BULLET_DAMAGE);
+          this.damageSound.currentTime = 0;
+          this.damageSound.play().catch(() => {});
           this.anim.play("hit");
           this.hurtFlash = 0.25;
           this.shake(0.15, 5);
