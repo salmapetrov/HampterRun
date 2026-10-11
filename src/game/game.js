@@ -257,6 +257,14 @@ export class Game {
     this.gameMusicResumeAt = 0; // where the level music was when a battle started
     this.musicRetry = 0; // seconds until the next "is it playing?" check
 
+    // Collision sound effect
+    this.collisionSound = new Audio("/assets/sounds/collide.wav");
+    this.collisionSound.volume = 0.6;
+
+    // Gem sound effect
+    this.powerupSound = new Audio("/assets/sounds/powerup.wav");
+    this.powerupSound.volume = 0.7;
+
     // Browsers block sound until the player clicks or presses a key, so try now
     // and again on the first click or key press while on the menu or instructions
     this.startMenuMusic();
@@ -297,6 +305,11 @@ export class Game {
     this.sceneTime = 0;
     this.battle = null;
     this.battleEnemy = null; // the map object we're fighting
+
+    // Pixel wipe between the level and the battle
+    this.wipeTime = 0;
+    this.revealTime = 0;
+    this.wipeCells = [];
 
     // Pixel wipe between the level and the battle
     this.wipeTime = 0;
@@ -351,6 +364,7 @@ export class Game {
       if (event.code === "KeyD") this.showGroundDebug = !this.showGroundDebug;
 
       // Battle: 1 = slash
+      // Battle: 1 = slash
       if (this.scene === "battle" && this.battle) this.battle.handleKey(event.code);
     });
 
@@ -371,6 +385,8 @@ export class Game {
       // (not during the boss battle, which has its own UI)
       const homeVisible =
         (this.state === "instructions" || this.state === "playing") &&
+        this.scene !== "battle" &&
+        this.scene !== "reveal";
         this.scene !== "battle" &&
         this.scene !== "reveal";
 
@@ -440,6 +456,62 @@ export class Game {
     if (!this.menuMusic) return;
     this.menuMusic.pause();
     this.menuMusic.currentTime = 0;
+  }
+
+  // Starts or resumes the game music (does nothing if it's already playing)
+  startGameMusic() {
+    if (!this.gameMusic) return;
+    this.gameMusicWanted = true;
+    if (!this.gameMusic.paused) return;
+
+    this.gameMusic.play().catch((error) => {
+      console.warn("Game music could not play:", error.message);
+    });
+  }
+
+  // Remembers where the level music is, then pauses it (used when a battle starts)
+  pauseGameMusicForBattle() {
+    if (!this.gameMusic) return;
+    this.gameMusicResumeAt = this.gameMusic.currentTime;
+    this.gameMusic.pause();
+  }
+
+  // Brings the level music back after a battle, picking up where it left off.
+  // It builds a fresh audio element (a reused one stayed silent) and jumps to
+  // the saved spot once the browser knows the song's length.
+  resumeGameMusic() {
+    if (!this.gameMusic) return;
+    this.gameMusicWanted = true;
+
+    const resumeAt = this.gameMusicResumeAt;
+
+    this.gameMusic.pause();
+    this.gameMusic = new Audio(encodeURI(GAME_MUSIC));
+    this.gameMusic.loop = true;
+    this.gameMusic.volume = 0.3;
+
+    this.gameMusic.addEventListener(
+      "loadedmetadata",
+      () => {
+        if (resumeAt > 0 && resumeAt < this.gameMusic.duration) {
+          this.gameMusic.currentTime = resumeAt;
+        }
+      },
+      { once: true }
+    );
+
+    this.gameMusic.play().catch((error) => {
+      console.warn("Game music could not play:", error.name, error.message);
+    });
+  }
+
+  // Stops it and rewinds to the start
+  stopGameMusic() {
+    if (!this.gameMusic) return;
+    this.gameMusicWanted = false;
+    this.gameMusicResumeAt = 0;
+    this.gameMusic.pause();
+    this.gameMusic.currentTime = 0;
   }
 
   // Starts or resumes the game music (does nothing if it's already playing)
@@ -584,6 +656,7 @@ export class Game {
     this.resetLevel();
     this.state = "playing";
     this.startGameMusic();
+    this.startGameMusic();
 
     // Let main.js know a round began (shows the camera panel)
     window.dispatchEvent(new CustomEvent("hampter-start"));
@@ -610,6 +683,7 @@ export class Game {
       return;
     }
 
+    // No jumping while a hampter turns evil or during the battle
     // No jumping while a hampter turns evil or during the battle
     if (this.state === "playing" && this.scene === "run") {
       // Remember take-off speed so the hamster keeps moving forward mid-air,
@@ -661,10 +735,26 @@ export class Game {
       this.updateReveal(dt);
       return;
     }
+    if (this.scene === "wipe") {
+      this.updateWipe(dt);
+      return;
+    }
+    if (this.scene === "reveal") {
+      this.updateReveal(dt);
+      return;
+    }
     if (this.scene === "battle") {
       this.battle.update(dt);
       if (this.battle.result) this.endBattle(this.battle.result);
       return;
+    }
+
+    // Safety net: if the level music should be playing but isn't (for example the
+    // browser refused to resume it after a battle), try again about once a second
+    this.musicRetry -= dt;
+    if (this.musicRetry <= 0) {
+      this.musicRetry = 1;
+      if (this.gameMusicWanted) this.startGameMusic();
     }
 
     // Safety net: if the level music should be playing but isn't (for example the
@@ -681,9 +771,13 @@ export class Game {
     this.player.updateAnimation(dt, this.isRunning || this.keyboardRunning);
 
     if (this.obstacles.wasHit) {
+      this.collisionSound.currentTime = 0;
+      this.collisionSound.play().catch(() => {});
+
       if (this.obstacles.isGameOver) {
         this.player.playDeath();
         this.state = "dying";
+        this.stopGameMusic();
         this.stopGameMusic();
       } else {
         this.player.playHit();
@@ -693,6 +787,7 @@ export class Game {
     // Made it to the end of the last background copy: show the win screen
     if (this.state === "playing" && this.distance >= this.maxDistance()) {
       this.state = "win";
+      this.stopGameMusic();
       this.stopGameMusic();
 
       // Same as game over for main.js (hides the camera panel)
@@ -710,7 +805,74 @@ export class Game {
       this.wipeTime = 0;
       this.wipeCells = this.makeWipeCells();
       this.pauseGameMusicForBattle(); // game music picks up here after the battle
+      this.scene = "wipe";
+      this.wipeTime = 0;
+      this.wipeCells = this.makeWipeCells();
+      this.pauseGameMusicForBattle(); // game music picks up here after the battle
       this.startBattleMusic();
+    }
+  }
+
+  // One random threshold (0 to 1) per block: the block turns black once the wipe passes it
+  makeWipeCells() {
+    const cols = Math.ceil(GAME_WIDTH / WIPE_BLOCK);
+    const rows = Math.ceil(GAME_HEIGHT / WIPE_BLOCK);
+    const cells = [];
+
+    for (let row = 0; row < rows; row++) {
+      for (let col = 0; col < cols; col++) {
+        cells.push({ x: col * WIPE_BLOCK, y: row * WIPE_BLOCK, t: Math.random() });
+      }
+    }
+    return cells;
+  }
+
+  // Black blocks fill in until the screen is fully black, then the battle starts
+  updateWipe(dt) {
+    this.wipeTime += dt;
+    this.player.updateAnimation(dt, false); // stand still (idle)
+
+    if (this.wipeTime >= WIPE_TIME) {
+      this.scene = "reveal";
+      this.revealTime = 0;
+      this.battle = new Battle(this.battleImages);
+    }
+  }
+
+  // The battle is frozen while the black blocks clear off, then it begins
+  updateReveal(dt) {
+    this.revealTime += dt;
+
+    if (this.revealTime >= REVEAL_TIME) {
+      this.scene = "battle";
+    }
+  }
+
+  // The wipe in reverse: the blocks that went black last clear first
+  drawReveal() {
+    const ctx = this.ctx;
+    const remaining = 1 - Math.min(1, this.revealTime / REVEAL_TIME);
+
+    ctx.fillStyle = "#000000";
+
+    for (const cell of this.wipeCells) {
+      if (cell.t <= remaining) ctx.fillRect(cell.x, cell.y, WIPE_BLOCK, WIPE_BLOCK);
+    }
+  }
+
+  drawWipe() {
+    const ctx = this.ctx;
+    const progress = Math.min(1, this.wipeTime / WIPE_TIME);
+
+    ctx.fillStyle = "#000000";
+
+    if (progress >= 1) {
+      ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+      return;
+    }
+
+    for (const cell of this.wipeCells) {
+      if (cell.t <= progress) ctx.fillRect(cell.x, cell.y, WIPE_BLOCK, WIPE_BLOCK);
     }
   }
 
@@ -792,10 +954,14 @@ export class Game {
         this.player.playDeath();
         this.state = "dying";
         this.stopGameMusic();
+        this.stopGameMusic();
       } else {
         this.player.playHit();
       }
     }
+
+    // Back to the level: pick the game music up where it left off
+    if (this.state === "playing") this.resumeGameMusic();
 
     // Back to the level: pick the game music up where it left off
     if (this.state === "playing") this.resumeGameMusic();
@@ -857,6 +1023,10 @@ export class Game {
       if (isColliding(this.player, hitbox(obj))) {
         obj.state = "collected";
         this.player.launch();
+
+        this.powerupSound.currentTime = 0;
+        this.powerupSound.play().catch(() => {});
+
         this.jumpMomentum = 1;
         this.gemGlowTime = GEM_GLOW_TIME;
       }
@@ -916,9 +1086,9 @@ export class Game {
     ctx.font = "bold 44px sans-serif";
     ctx.lineWidth = 6;
     ctx.strokeStyle = "#000000";
-    ctx.strokeText("HAMPTER TURNED EVIL!", GAME_WIDTH / 2, 120);
+    ctx.strokeText("ENCOUNTERED EVIL HAMPTER!", GAME_WIDTH / 2, 120);
     ctx.fillStyle = "#FF3B3B";
-    ctx.fillText("HAMPTER TURNED EVIL!", GAME_WIDTH / 2, 120);
+    ctx.fillText("ENCOUNTERED EVIL HAMPTER!", GAME_WIDTH / 2, 120);
     ctx.textAlign = "left";
   }
 
@@ -963,11 +1133,9 @@ export class Game {
   drawInstructions() {
     const ctx = this.ctx;
 
-    if (this.instructionsImage) {
-      // Instructions screen (900x500, drawn over the whole canvas)
-      ctx.drawImage(this.instructionsImage, 0, 0, GAME_WIDTH, GAME_HEIGHT);
-      return;
-    }
+    // The image itself is the #instructions <img> in index.html, shown by
+    // main.js on top of the canvas so its text isn't pixelated
+    if (this.instructionsImage) return;
 
     // Fallback text if the image hasn't loaded
     ctx.textAlign = "center";
@@ -1098,6 +1266,7 @@ export class Game {
     // ---- Screen-space effects and HUD: fixed on screen ----
     if (this.gemGlowTime > 0) this.drawGemGlow();
     if (this.scene === "transform" || this.scene === "wipe") this.drawTransform();
+    if (this.scene === "transform" || this.scene === "wipe") this.drawTransform();
 
     this.livesDisplay.draw(ctx, this.obstacles.lives);
 
@@ -1110,6 +1279,9 @@ export class Game {
       ctx.font = "14px monospace";
       ctx.fillText(`scrollX: ${Math.round(this.scrollX)}`, 20, GAME_HEIGHT - 20);
     }
+
+    // Black pixel wipe goes on top of everything in the level
+    if (screen === "playing" && this.scene === "wipe") this.drawWipe();
 
     // Black pixel wipe goes on top of everything in the level
     if (screen === "playing" && this.scene === "wipe") this.drawWipe();

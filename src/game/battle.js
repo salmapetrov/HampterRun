@@ -144,6 +144,16 @@ function whiteSilhouette(img, w, h) {
 export class Battle {
   constructor(images) {
     this.images = images;
+
+    this.attackSound = new Audio("/assets/sounds/attack.wav");
+    this.attackSound.volume = 0.5;
+
+    this.jumpSound = new Audio("/assets/sounds/jump.wav");
+    this.jumpSound.volume = 0.5;
+
+    this.gunshotSound = new Audio("/assets/sounds/Laser_Gun.wav");
+    this.gunshotSound.volume = 0.5;
+
     this.evilWhite = images.evil
       ? whiteSilhouette(images.evil, EVIL_W, EVIL_H)
       : null;
@@ -236,6 +246,10 @@ export class Battle {
     this.dodgeVelocityY = JUMP_VELOCITY;
     this.dodgeY = 0;
     this.isDodging = true;
+
+    // Play jump sound effect
+    this.jumpSound.currentTime = 0;
+    this.jumpSound.play().catch(() => {});
   }
 
   // MAIN UPDATE
@@ -361,6 +375,9 @@ export class Battle {
   }
 
   fireBullet() {
+    this.gunshotSound.currentTime = 0;
+    this.gunshotSound.play().catch(() => {});
+
     const targetX =
       this.hamsterX + 20 * HAMSTER_SCALE;
 
@@ -403,6 +420,9 @@ export class Battle {
 
       if (this.anim.name !== this.move) {
         this.anim.play(this.move);
+
+        this.attackSound.currentTime = 0;
+        this.attackSound.play().catch(() => {});
       }
 
       if (

@@ -135,3 +135,19 @@ h1 {
   border-top-color: #2b1d12;
   border-bottom: 0;
 }
+
+/* How to play image, centered over the game (see main.js) */
+#instructions {
+  position: fixed;
+  inset: 0;
+  z-index: 5;
+  width: 80vw;
+  height: 80vh;
+  margin: auto;
+  object-fit: contain; /* keep its shape whatever the window size */
+  pointer-events: none; /* clicks still go to the game */
+}
+
+#instructions[hidden] {
+  display: none;
+}
